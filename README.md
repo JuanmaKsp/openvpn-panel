@@ -36,3 +36,65 @@ Si se instala con dpkg -i, después ejecutar:
 ```bash
 apt -f install -y
 ```
+Durante la instalación se solicita APP_URL (debconf).
+
+## Usuario admin inicial (por defecto):
+
+ - usuario: admin@local
+
+ - contraseña: admin
+
+Cambia la contraseña tras el primer login.
+
+## Puertos
+
+ - Panel externo: https://<APP_URL>/ (lighttpd)
+
+ - Nginx interno: 127.0.0.1:8080
+
+ - vpn-manager interno: 127.0.0.1:9187
+
+## Validez de certificados
+
+La fecha “Not After” de un certificado X.509 no se puede editar.
+Por eso la validez se aplica solo al crear o renovar un perfil (nuevo .ovpn).
+
+La UI permite introducir la validez como un número (meses) y ofrece accesos rápidos:
+
+ - 6 meses
+
+ - 24 meses (2 años) (por defecto)
+
+ - 48 meses (4 años)
+
+## Seguridad
+
+ - vpn-manager solo escucha en localhost y requiere token (/etc/vpn-manager/env).
+
+ - nginx solo escucha en localhost (8080).
+
+ - lighttpd actúa como proxy (80/443).
+
+ - Revocación real vía CRL (server-side).
+
+## Estructura de instalación (paths)
+
+Puede variar según build (por ejemplo /var/www/vpnpanel o /opt/vpnpanel).
+
+ - App Laravel: /var/www/vpnpanel
+
+ - Env persistente: /etc/vpnpanel/vpnpanel.env
+
+ - DB persistente (SQLite): /var/lib/vpnpanel/database/database.sqlite
+
+ - vpn-manager: /usr/sbin/vpn-manager
+
+ - systemd unit: /lib/systemd/system/vpn-manager.service
+
+## Build del .deb (resumen)
+
+El .deb incluye la app Laravel “release” ya construida (vendor + assets).
+Se usa debuild/dpkg-buildpackage para generar el paquete.
+```bash
+::contentReference[oaicite:0]{index=0}
+```
