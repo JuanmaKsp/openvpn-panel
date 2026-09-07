@@ -10,8 +10,8 @@ Hay dos paquetes según la versión de Debian de tu TurnKey. El contenido de la 
 
 | Fichero | Debian | Dependencias de Python |
 |---|---|---|
-| `openvpn-manager_1_5_5_debian10_all.deb` | 10 (Buster) | `gunicorn` y `python-pam` se instalan vía `pip3` en la instalación (no están en los repos de Buster). |
-| `openvpn-manager_1_5_5_debian11-12-13_all.deb` | 11 (Bullseye), 12 (Bookworm), 13 (Trixie) | Todo desde APT (`gunicorn`, `python3-pam`). |
+| `openvpn-manager_1.5.5_debian10_all.deb` | 10 (Buster) | `gunicorn` y `python-pam` se instalan vía `pip3` en la instalación (no están en los repos de Buster). |
+| `openvpn-manager_1.5.5_debian11-12-13_all.deb` | 11 (Bullseye), 12 (Bookworm), 13 (Trixie) | Todo desde APT (`gunicorn`, `python3-pam`). |
 
 ## Funcionalidades
 
@@ -50,14 +50,14 @@ Descarga el `.deb` correspondiente a tu Debian desde la pestaña **[Releases](..
 
 ```bash
 apt update
-apt install -y ./openvpn-manager_1_5_5_debian11-12-13_all.deb
+apt install -y ./openvpn-manager_1.5.5_debian11-12-13_all.deb
 ```
 
 En Debian 10 (Buster):
 
 ```bash
 apt update
-apt install -y ./openvpn-manager_1_5_5_debian10_all.deb
+apt install -y ./openvpn-manager_1.5.5_debian10_all.deb
 ```
 
 > Si instalas con `dpkg -i`, ejecuta después `apt -f install -y` para completar las dependencias.
