@@ -1,153 +1,153 @@
 # OpenVPN Manager
 
-Panel web (GUI) para gestionar clientes OpenVPN sobre **TurnKey Linux OpenVPN**. Interfaz **Flask** servida por HTTPS en el puerto **12322**, con autenticación de usuarios del sistema (PAM). Disponible en **español e inglés** (selector de idioma en la propia interfaz).
+A web GUI for managing OpenVPN clients on **TurnKey Linux OpenVPN**. **Flask**-based interface served over HTTPS on port **12322**, with system-user authentication (PAM). Available in **English and Spanish** (language switcher built into the UI).
 
-Permite crear, revocar, renovar y descargar perfiles `.ovpn`, además de gestionar IPs estáticas, rangos de acceso por cliente, bloqueos, modo mantenimiento, un mapa de geolocalización de conexiones y visor de logs — todo desde el navegador.
+Create, revoke, renew and download `.ovpn` profiles, plus manage static IPs, per-client access ranges, blocking, maintenance mode, a connection geolocation map and a log viewer — all from the browser.
 
-## Compatibilidad — elige el `.deb` correcto
+## Compatibility — pick the right `.deb`
 
-Hay dos paquetes según la versión de Debian de tu TurnKey. El contenido de la app es el mismo; cambia cómo se resuelven las dependencias de Python.
+There are two packages depending on your TurnKey's Debian version. The app itself is the same; what differs is how Python dependencies are resolved.
 
-| Fichero | Debian | Dependencias de Python |
+| File | Debian | Python dependencies |
 |---|---|---|
-| `openvpn-manager_<version>_debian10_all.deb` | 10 (Buster) | `gunicorn`, `python-pam` y `maxminddb` se instalan vía `pip3` en la instalación (no están en los repos de Buster). |
-| `openvpn-manager_<version>_debian11-12-13_all.deb` | 11 (Bullseye), 12 (Bookworm), 13 (Trixie) | Todo desde APT (`gunicorn`, `python3-pam`, `python3-maxminddb`). |
+| `openvpn-manager_<version>_debian10_all.deb` | 10 (Buster) | `gunicorn`, `python-pam` and `maxminddb` are installed via `pip3` at install time (not available in Buster's repos). |
+| `openvpn-manager_<version>_debian11-12-13_all.deb` | 11 (Bullseye), 12 (Bookworm), 13 (Trixie) | Everything from APT (`gunicorn`, `python3-pam`, `python3-maxminddb`). |
 
-Descarga la última versión desde la pestaña **[Releases](../../releases)**.
+Download the latest version from the **[Releases](../../releases)** tab.
 
-## Funcionalidades
+## Features
 
-- Crear clientes y generar/descargar perfiles `.ovpn`
-- Revocar certificados (CRL) y renovar perfiles
-- Validez configurable por meses al crear/renovar
-- Asignación de **IP estática** por cliente
-- **Rangos de acceso** por cliente (rutas push vía CCD), editables sin necesidad de reemitir el `.ovpn`
-- Bloquear / desbloquear clientes
-- Desconectar clientes conectados (interfaz de gestión de OpenVPN)
-- **Modo mantenimiento** (bloqueo temporal global)
-- **Mapa de geolocalización**: ubicación aproximada de la última conexión de cada cliente (hasta 5 IPs distintas de historial), resuelta localmente contra una base de datos GeoIP (DB-IP City Lite) — ninguna IP de cliente se envía nunca a un tercero; solo el navegador del administrador carga las teselas del mapa desde OpenStreetMap
-- Visor de logs de OpenVPN y de auditoría
-- Gestión de usuarios del panel (cuentas del sistema sin shell)
-- Interfaz bilingüe español/inglés
+- Create clients and generate/download `.ovpn` profiles
+- Revoke certificates (CRL) and renew profiles
+- Configurable validity in months on create/renew
+- Per-client **static IP** assignment
+- **Access ranges** per client (pushed routes via CCD), editable without reissuing the `.ovpn`
+- Block / unblock clients
+- Disconnect connected clients (OpenVPN management interface)
+- **Maintenance mode** (temporary global lockout)
+- **Geolocation map**: approximate location of each client's most recent connection (up to 5 distinct IPs of history), resolved locally against a GeoIP database (DB-IP City Lite) — no client IP is ever sent to a third party; only the admin's own browser loads map tiles from OpenStreetMap
+- OpenVPN and audit log viewer
+- Panel-user management (system accounts without shell)
+- Bilingual English/Spanish UI
 
-## Arquitectura
+## Architecture
 
-- **stunnel4** termina TLS y escucha en `:::12322` (proxy protocol).
-- **gunicorn** ejecuta la app Flask en `127.0.0.1:5000` (solo localhost).
-- Un poller (`ovpn-acl-poller`) sincroniza las ACL de los clientes restringidos que están conectados y resuelve la geolocalización de nuevas conexiones.
-- Un timer mensual (`ovpn-geoip-update`) refresca la base de datos GeoIP local.
+- **stunnel4** terminates TLS and listens on `:::12322` (proxy protocol).
+- **gunicorn** runs the Flask app on `127.0.0.1:5000` (localhost only).
+- A poller (`ovpn-acl-poller`) syncs the ACLs of connected restricted clients and resolves geolocation for new connections.
+- A monthly timer (`ovpn-geoip-update`) refreshes the local GeoIP database.
 
 ```
-Navegador  ──HTTPS 12322──►  stunnel4  ──proxy──►  gunicorn 127.0.0.1:5000  (Flask)
+Browser  ──HTTPS 12322──►  stunnel4  ──proxy──►  gunicorn 127.0.0.1:5000  (Flask)
 ```
 
-La app llama a las herramientas de easy-rsa / OpenVPN de TurnKey; no expone la lógica de certificados a Internet.
+The app calls TurnKey's easy-rsa / OpenVPN tooling directly; it doesn't expose certificate logic to the Internet.
 
-## Requisitos previos
+## Prerequisites
 
-- TurnKey Linux **OpenVPN** ya configurado (easy-rsa en `/etc/openvpn/easy-rsa`).
-- Certificado TLS en `/etc/ssl/private/cert.pem` (la instalación falla si no existe).
-- Acceso de red al puerto **12322/tcp** (la instalación intenta abrirlo en el firewall automáticamente).
+- A configured TurnKey Linux **OpenVPN** appliance (easy-rsa at `/etc/openvpn/easy-rsa`).
+- A TLS certificate at `/etc/ssl/private/cert.pem` (install fails if missing).
+- Network access to port **12322/tcp** (install attempts to open it in the firewall automatically).
 
-## Instalación
+## Installation
 
-Descarga el `.deb` correspondiente a tu Debian desde la pestaña **[Releases](../../releases)** e instálalo con APT para que resuelva dependencias:
+Download the `.deb` matching your Debian version from the **[Releases](../../releases)** tab and install it with APT so dependencies resolve:
 
 ```bash
 apt update
 apt install -y ./openvpn-manager_<version>_debian11-12-13_all.deb
 ```
 
-En Debian 10 (Buster):
+On Debian 10 (Buster):
 
 ```bash
 apt update
 apt install -y ./openvpn-manager_<version>_debian10_all.deb
 ```
 
-> Si instalas con `dpkg -i`, ejecuta después `apt -f install -y` para completar las dependencias.
+> If you install with `dpkg -i`, run `apt -f install -y` afterwards to complete the dependencies.
 
-Al terminar, la instalación habilita y arranca los servicios y muestra la URL de acceso.
+On completion, the install enables and starts the services and prints the access URL.
 
-## Primer acceso
+## First access
 
-- URL: `https://<IP-del-servidor>:12322/`
-- **Credenciales:** un usuario Linux del sistema (por ejemplo `root`), autenticado vía **PAM**. No hay un usuario/contraseña por defecto propio del panel.
+- URL: `https://<server-IP>:12322/`
+- **Credentials:** a system Linux user (e.g. `root`), authenticated via **PAM**. There's no panel-specific default user/password.
 
-Desde **Administración** puedes crear usuarios adicionales del panel; se crean como cuentas del sistema sin shell y en el grupo `ovpn-panel`, al que se le deniega el acceso SSH.
+From **Administration** you can create additional panel users; they're created as shell-less system accounts in the `ovpn-panel` group, which is denied SSH access.
 
-> El certificado por defecto es autofirmado, así que el navegador avisará la primera vez.
+> The default certificate is self-signed, so the browser will warn the first time.
 
-## Puertos
+## Ports
 
-| Puerto | Uso |
+| Port | Use |
 |---|---|
-| `12322/tcp` | Panel HTTPS (stunnel), acceso externo |
-| `127.0.0.1:5000` | gunicorn / Flask (solo interno) |
+| `12322/tcp` | Panel HTTPS (stunnel), external access |
+| `127.0.0.1:5000` | gunicorn / Flask (internal only) |
 
-## Servicios systemd
+## systemd services
 
-- `openvpn-gui.service` — la app Flask (gunicorn)
-- `stunnel4@openvpn-gui` — terminación TLS del panel
-- `ovpn-acl-poller.service` — sincronización de ACL de clientes restringidos y geolocalización
-- `ovpn-geoip-update.timer` / `.service` — refresco mensual de la base de datos GeoIP
+- `openvpn-gui.service` — the Flask app (gunicorn)
+- `stunnel4@openvpn-gui` — panel TLS termination
+- `ovpn-acl-poller.service` — restricted-client ACL sync and geolocation
+- `ovpn-geoip-update.timer` / `.service` — monthly GeoIP database refresh
 
 ```bash
 systemctl status openvpn-gui stunnel4@openvpn-gui ovpn-acl-poller
 journalctl -u openvpn-gui -f
 ```
 
-## Rutas de instalación
+## Installation paths
 
 - App: `/var/www/openvpn/app/`
-- Metadatos de clientes: `/var/www/openvpn/clients_meta.json`
-- Historial de geolocalización: `/var/lib/ovpn-acl/clients_geo.json`
-- Base de datos GeoIP: `/var/lib/openvpn-manager/dbip-city-lite.mmdb`
-- Config de easy-rsa / OpenVPN: `/etc/openvpn/easy-rsa`, `/etc/openvpn/server.ccd`
-- Config de stunnel: `/etc/stunnel/openvpn-gui.conf`
-- Logs: `/var/log/openvpn-gui.log` (auditoría) y `/var/log/openvpn-gui-access.log` (accesos), con rotación semanal (12 semanas)
+- Client metadata: `/var/www/openvpn/clients_meta.json`
+- Geolocation history: `/var/lib/ovpn-acl/clients_geo.json`
+- GeoIP database: `/var/lib/openvpn-manager/dbip-city-lite.mmdb`
+- easy-rsa / OpenVPN config: `/etc/openvpn/easy-rsa`, `/etc/openvpn/server.ccd`
+- stunnel config: `/etc/stunnel/openvpn-gui.conf`
+- Logs: `/var/log/openvpn-gui.log` (audit) and `/var/log/openvpn-gui-access.log` (access), weekly rotation (12 weeks)
 
-## Seguridad
+## Security
 
-- Autenticación por PAM contra usuarios del sistema.
-- Protección CSRF, cabeceras de seguridad y expiración de sesión.
-- Bloqueo por fuerza bruta (lockout por IP).
-- Registro de auditoría de acciones.
-- La app solo escucha en `localhost`; el acceso externo pasa siempre por stunnel (TLS).
+- PAM authentication against system users.
+- CSRF protection, security headers and session expiry.
+- Brute-force lockout (per-IP).
+- Audit logging of actions.
+- The app only listens on `localhost`; external access always goes through stunnel (TLS).
 
-## Desinstalación
-
-```bash
-apt remove openvpn-manager        # conserva ficheros de configuración
-apt purge openvpn-manager         # elimina también la configuración
-```
-
-## Estructura del repositorio
-
-```
-app/                  Aplicación Flask (código fuente, plantillas, estáticos)
-usr/lib/openvpn-manager/   Scripts del poller de ACL/geolocalización y del refresco GeoIP
-systemd/              Unidades systemd (.service / .timer)
-config/               Config de stunnel, logrotate y tmpfiles.d
-packaging/debian10/DEBIAN/       Scripts de control específicos de Debian 10
-packaging/debian11-13/DEBIAN/    Scripts de control específicos de Debian 11/12/13
-scripts/build.sh      Ensambla ambos árboles de paquete y construye los .deb
-```
-
-El código de la app, los scripts y las unidades systemd son **compartidos** entre ambos paquetes; solo cambian los scripts de control (`postinst`/`prerm`/`postrm`/`control`) bajo `packaging/`, que resuelven las dependencias de Python de forma distinta según el Debian objetivo.
-
-## Build del `.deb`
-
-Requiere `dpkg-deb` (paquete `dpkg-dev`, normalmente ya presente en Debian).
+## Uninstall
 
 ```bash
-./scripts/build.sh          # construye ambos paquetes en dist/
-./scripts/build.sh debian10       # solo Debian 10
-./scripts/build.sh debian11-13    # solo Debian 11/12/13
+apt remove openvpn-manager        # keeps configuration files
+apt purge openvpn-manager         # also removes configuration
 ```
 
-Los `.deb` resultantes se generan en `dist/openvpn-manager_<version>_<target>_all.deb`, con la versión leída del `Version:` de cada `packaging/<target>/DEBIAN/control`.
+## Repository structure
 
-## Licencia
+```
+app/                  Flask application (source, templates, static assets)
+usr/lib/openvpn-manager/   ACL/geolocation poller and GeoIP refresh scripts
+systemd/              systemd units (.service / .timer)
+config/               stunnel, logrotate and tmpfiles.d config
+packaging/debian10/DEBIAN/       Debian 10-specific control scripts
+packaging/debian11-13/DEBIAN/    Debian 11/12/13-specific control scripts
+scripts/build.sh      Assembles both package trees and builds the .deb files
+```
 
-Distribuido bajo licencia **GPL-3.0**. Ver [LICENSE](LICENSE).
+The app code, scripts and systemd units are **shared** between both packages; only the control scripts (`postinst`/`prerm`/`postrm`/`control`) under `packaging/` differ, resolving Python dependencies differently depending on the target Debian version.
+
+## Building the `.deb`
+
+Requires `dpkg-deb` (package `dpkg-dev`, usually already present on Debian).
+
+```bash
+./scripts/build.sh          # builds both packages into dist/
+./scripts/build.sh debian10       # Debian 10 only
+./scripts/build.sh debian11-13    # Debian 11/12/13 only
+```
+
+The resulting `.deb` files are generated at `dist/openvpn-manager_<version>_<target>_all.deb`, with the version read from each target's `packaging/<target>/DEBIAN/control`.
+
+## License
+
+Distributed under the **GPL-3.0** license. See [LICENSE](LICENSE).
