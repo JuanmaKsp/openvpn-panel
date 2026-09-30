@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenVPN Manager - descarga/actualiza la base de datos GeoIP (DB-IP City Lite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/openvpn-manager/update-geoip.py
+User=root
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/openvpn-manager
+ProtectHome=true
+PrivateTmp=true

@@ -1,0 +1,18 @@
+Package: openvpn-manager
+Version: 1.7.2
+Architecture: all
+Maintainer: OpenVPN Manager <root@localhost>
+Installed-Size: 140
+Depends: python3 (>= 3.7), python3-flask, python3-pip, stunnel4, openvpn
+Recommends: lighttpd
+Section: net
+Priority: optional
+Description: Web GUI for managing OpenVPN clients (Debian 10 Buster)
+ A Flask-based HTTPS web interface (port 12322) for creating,
+ revoking, renewing and downloading OpenVPN client certificates.
+ .
+ Compatible with TurnKey Linux OpenVPN on Debian 10 (Buster).
+ Installs gunicorn and python-pam automatically via pip3.
+ .
+ Features: PAM authentication, CSRF protection, brute-force
+ lockout, security headers, session timeout, audit logging.

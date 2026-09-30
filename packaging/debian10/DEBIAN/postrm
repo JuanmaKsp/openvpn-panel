@@ -1,0 +1,38 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        # Revertir menú TurnKey
+        if [ -f /usr/lib/openvpn-manager/remove-menu.py ]; then
+            python3 /usr/lib/openvpn-manager/remove-menu.py 2>/dev/null || true
+        fi
+
+        # Eliminar regla iptables
+        iptables -D INPUT -p tcp -m tcp --dport 12322 -j ACCEPT 2>/dev/null || true
+        RULES=/etc/iptables.up.rules
+        if [ -f "$RULES" ]; then
+            sed -i '/dport 12322 -j ACCEPT/d' "$RULES"
+        fi
+
+        # Eliminar datos de usuario y logs
+        rm -f /var/www/openvpn/app/.secret
+        rm -f /var/www/openvpn/clients_meta.json
+        rm -f /var/log/openvpn-gui.log /var/log/openvpn-gui-access.log
+
+        # Eliminar base de datos GeoIP y las ubicaciones de clientes guardadas
+        rm -rf /var/lib/openvpn-manager
+        rm -f /var/lib/ovpn-acl/clients_geo.json
+
+        # Recargar systemd
+        systemctl daemon-reload 2>/dev/null || true
+        ;;
+
+    remove)
+        # Revertir menú TurnKey al desinstalar
+        python3 /usr/lib/openvpn-manager/remove-menu.py 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
+        ;;
+esac
+
+exit 0

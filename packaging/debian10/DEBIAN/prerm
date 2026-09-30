@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    remove|purge|upgrade|deconfigure)
+        systemctl stop openvpn-gui stunnel4@openvpn-gui 2>/dev/null || true
+        systemctl disable openvpn-gui stunnel4@openvpn-gui 2>/dev/null || true
+        systemctl stop ovpn-geoip-update.timer 2>/dev/null || true
+        systemctl disable ovpn-geoip-update.timer 2>/dev/null || true
+        ;;
+esac
+
+exit 0

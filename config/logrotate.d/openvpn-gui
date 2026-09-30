@@ -1,0 +1,12 @@
+/var/log/openvpn-gui.log
+/var/log/openvpn-gui-access.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    postrotate
+        systemctl kill -s USR1 openvpn-gui >/dev/null 2>&1 || true
+    endscript
+}

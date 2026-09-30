@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="{{ lang() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenVPN Manager – Rangos de acceso</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+    header {
+      background: #1a2332; color: #fff; padding: 0 24px; min-height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    }
+    header .brand { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .gpinfor-link {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: #6b8aad; text-decoration: none; line-height: 1;
+    }
+    .gpinfor-link:hover { color: #aac4e0; }
+    header .user-area { font-size: 13px; color: #aac4e0; display: flex; align-items: center; gap: 14px; }
+    header .user-area a {
+      color: #aac4e0; text-decoration: none; padding: 4px 10px;
+      border: 1px solid #3a5068; border-radius: 4px; transition: background .2s;
+    }
+    header .user-area a:hover { background: #253445; color: #fff; }
+    .lang-switch { display: flex; gap: 4px; }
+    .lang-switch a { padding: 3px 8px; font-size: 11px; }
+    .lang-switch a.active { background: #2980b9; border-color: #2980b9; color: #fff; }
+
+    .nav-tabs {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px;
+      display: flex; gap: 4px; border-bottom: 2px solid #dee2e6;
+    }
+    .nav-tab {
+      padding: 10px 20px; font-size: 13px; font-weight: 600; color: #6c757d;
+      text-decoration: none; border: 1px solid transparent;
+      border-bottom: none; border-radius: 6px 6px 0 0;
+      background: transparent; cursor: pointer; margin-bottom: -2px;
+      transition: color .15s, background .15s;
+    }
+    .nav-tab:hover { color: #2980b9; background: #f0f4f8; }
+    .nav-tab.active {
+      color: #1a2332; background: #fff;
+      border-color: #dee2e6; border-bottom-color: #fff;
+    }
+
+    main { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+    .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    .flash.success { background: #eafaf1; border: 1px solid #27ae60; color: #1e8449; }
+    .flash.error   { background: #fdecea; border: 1px solid #e74c3c; color: #c0392b; }
+    .flash.info    { background: #eaf4ff; border: 1px solid #2980b9; color: #1a5276; }
+
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; overflow: hidden; }
+    .card-header {
+      padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid #e9ecef;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h2 { font-size: 15px; font-weight: 600; color: #444; }
+    .card-body { padding: 20px; }
+
+    .btn {
+      display: inline-block; padding: 7px 14px; border: none; border-radius: 5px;
+      font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary   { background: #2980b9; color: #fff; }
+    .btn-danger    { background: #e74c3c; color: #fff; }
+    .btn-secondary { background: #95a5a6; color: #fff; }
+    .btn-warning   { background: #e67e22; color: #fff; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 5px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+      border-radius: 5px; font-size: 13px; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #2980b9; }
+    .hint { font-size: 12px; color: #888; margin-top: 6px; line-height: 1.5; }
+    .optional { font-weight: 400; text-transform: none; letter-spacing: 0; color: #999; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #f8f9fa; text-align: left; padding: 10px 12px;
+      font-size: 11px; font-weight: 700; color: #666;
+      text-transform: uppercase; letter-spacing: .5px; border-bottom: 2px solid #e9ecef;
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block; padding: 3px 9px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .badge-ip { background: #eaf2ff; color: #2c5ea8; font-family: monospace; letter-spacing: 0; text-transform: none; }
+    .badge-none { background: #f0f0f0; color: #999; }
+
+    .ip-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ip-tag {
+      background: #f0f4f8; color: #2c5ea8; font-family: monospace; font-size: 12px;
+      padding: 2px 8px; border-radius: 10px;
+    }
+
+    .empty { text-align: center; padding: 40px 20px; color: #aaa; }
+    .empty p { margin-top: 8px; font-size: 14px; }
+    .table-scroll { overflow-x: auto; }
+    .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 999;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 8px; padding: 28px; width: 480px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.25); max-height: 90vh; overflow-y: auto;
+    }
+    .modal-box h3 { font-size: 16px; color: #333; margin-bottom: 6px; }
+    .modal-box .subtitle { font-size: 13px; color: #888; margin-bottom: 18px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+    @media (max-width: 700px) {
+      main { padding: 0 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>&#128274; OpenVPN Manager</h1>
+    <a href="https://gpinfor.com/" target="_blank" rel="noopener" class="gpinfor-link">gpinfor.com · v{{ app_version }}</a>
+  </div>
+  <div class="user-area">
+    <div class="lang-switch">
+      <a href="/lang/en?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'en' }}">EN</a>
+      <a href="/lang/es?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'es' }}">ES</a>
+    </div>
+    <span>{{ user }}</span>
+    <a href="/logout">{{ t('nav.logout') }}</a>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <a class="nav-tab" href="/">&#128101; {{ t('nav.clients') }}</a>
+  <a class="nav-tab active" href="/access-ranges">&#127760; {{ t('nav.ranges') }}</a>
+  <a class="nav-tab" href="/staticip">&#128204; {{ t('nav.staticip') }}</a>
+  <a class="nav-tab" href="/map">&#128506; {{ t('nav.map') }}</a>
+  {% if user == 'root' %}<a class="nav-tab" href="/admin/users">&#128272; {{ t('nav.admin') }}</a>{% endif %}
+  <a class="nav-tab" href="/logs">&#128203; {{ t('nav.logs') }}</a>
+  <a class="nav-tab" href="/help">&#10067; {{ t('nav.help') }}</a>
+</nav>
+
+<main>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <div class="card-body">
+      <p class="hint" style="margin-top:0">
+        {{ t('ar.intro') }}
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ t('ar.clients_title', restricted=restricted_count, total=(clients | length)) }}</h2>
+    </div>
+    {% if clients %}
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t('ar.th_name') }}</th>
+          <th>{{ t('ar.th_ranges') }}</th>
+          <th>{{ t('ar.th_actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr>
+          <td>
+            <strong>{{ c.name }}</strong>
+            {% if c.static_ip %}
+              <div style="margin-top:4px">
+                <span class="badge badge-ip" title="{{ t('ar.static_ip_title') }}">&#128204; {{ c.static_ip }}</span>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.ip_ranges %}
+              <div class="ip-tags">
+                {% for r in c.ip_ranges %}
+                  <span class="ip-tag">{{ r }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span class="badge badge-none">{{ t('ar.no_restriction') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              <button type="button" class="btn btn-secondary btn-sm"
+                      onclick='openRangesModal({{ c.name | tojson }}, {{ c.ip_ranges | tojson }})'>
+                &#127760; {{ t('ar.edit_btn') }}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div style="font-size:40px">&#127760;</div>
+      <p>{{ t('ar.no_clients') }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+</main>
+
+<!-- Modal: editar rango de acceso -->
+<div class="modal-overlay" id="rangesModal">
+  <div class="modal-box">
+    <h3>&#127760; {{ t('ar.modal_title') }}</h3>
+    <p class="subtitle">{{ t('ar.modal_client') }} <strong id="rangesClientName"></strong></p>
+    <form method="POST" id="rangesForm">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label for="rgRanges">{{ t('idx.f_ranges_label') }} <span class="optional">{{ t('ar.ranges_optional') }}</span></label>
+        <textarea id="rgRanges" name="ip_ranges" style="min-height:90px"
+                  placeholder="{{ t('idx.ranges_placeholder') }}"></textarea>
+        <div class="hint">{{ t('ar.ranges_hint') }}</div>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">{{ t('ar.save_btn') }}</button>
+        <button type="button" class="btn btn-secondary" onclick="closeRangesModal()">{{ t('idx.cancel_btn') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openRangesModal(name, currentRanges) {
+    document.getElementById('rangesClientName').textContent = name;
+    document.getElementById('rgRanges').value = (currentRanges || []).join('\n');
+    document.getElementById('rangesForm').action = '/access-ranges/update/' + encodeURIComponent(name);
+    document.getElementById('rangesModal').classList.add('open');
+  }
+  function closeRangesModal() {
+    document.getElementById('rangesModal').classList.remove('open');
+  }
+  document.getElementById('rangesModal').addEventListener('click', function(e) {
+    if (e.target === this) closeRangesModal();
+  });
+</script>
+
+</body>
+</html>

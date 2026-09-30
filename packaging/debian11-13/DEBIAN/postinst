@@ -1,0 +1,331 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+        # ----------------------------------------------------------------
+        # Verificación de versión Debian — este paquete es para Debian 11/12/13
+        # ----------------------------------------------------------------
+        DEBIAN_VER=$(cut -d. -f1 /etc/debian_version 2>/dev/null || echo "11")
+        if [ "$DEBIAN_VER" -lt 11 ] 2>/dev/null; then
+            echo "ERROR: This package is for Debian 11/12/13 (Bullseye/Bookworm/Trixie)." >&2
+            echo "       Detected system: Debian ${DEBIAN_VER}" >&2
+            echo "       Use: openvpn-manager_*_buster_all.deb" >&2
+            exit 1
+        fi
+
+        # ----------------------------------------------------------------
+        # Comprobación de compatibilidad
+        # ----------------------------------------------------------------
+        for bin in openvpn-addclient openvpn-revoke stunnel4; do
+            if ! command -v "$bin" &>/dev/null; then
+                echo "ERROR: '$bin' not found. This package requires TurnKey Linux OpenVPN." >&2
+                exit 1
+            fi
+        done
+        [ -f /etc/ssl/private/cert.pem ] || { echo "ERROR: /etc/ssl/private/cert.pem not found." >&2; exit 1; }
+
+        # ----------------------------------------------------------------
+        # Journal persistente. Muchas imagenes minimas de Debian dejan
+        # Storage=auto sin /var/log/journal creado, con lo que journald
+        # guarda el log SOLO en RAM (/run/log/journal) y se pierde entero
+        # en cada reinicio. Bug real encontrado en produccion: con eso, el
+        # journal de openvpn@server retenia apenas ~2 horas -- el poller de
+        # rangos de acceso (antes de reducir su ruido) llenaba ese espacio
+        # volatil tan rapido que rotaba y se llevaba por delante tambien
+        # los eventos reales de conexion/desconexion, dejando la pestaña
+        # "Log de conexiones" casi vacia. Idempotente: si ya existe
+        # /var/log/journal (journal ya persistente) no hace nada nuevo.
+        # ----------------------------------------------------------------
+        if [ ! -d /var/log/journal ]; then
+            mkdir -p /var/log/journal
+            systemd-tmpfiles --create --prefix /var/log/journal 2>/dev/null || true
+            journalctl --flush 2>/dev/null || true
+            systemctl restart systemd-journald 2>/dev/null || true
+        fi
+
+        # ----------------------------------------------------------------
+        # Directorios y clave secreta Flask
+        # ----------------------------------------------------------------
+        mkdir -p /var/www/openvpn/app/templates
+        mkdir -p /etc/openvpn/server.ccd
+        SECRET=/var/www/openvpn/app/.secret
+        if [ ! -f "$SECRET" ]; then
+            python3 -c "import secrets; print(secrets.token_hex(32))" > "$SECRET"
+            chmod 600 "$SECRET"
+        fi
+
+        # ----------------------------------------------------------------
+        # Logs
+        # ----------------------------------------------------------------
+        touch /var/log/openvpn-gui.log /var/log/openvpn-gui-access.log
+        chmod 640 /var/log/openvpn-gui.log /var/log/openvpn-gui-access.log
+
+        # ----------------------------------------------------------------
+        # OpenVPN management interface (puerto 7505 local)
+        # ----------------------------------------------------------------
+        OVPN_CONF=/etc/openvpn/server.conf
+        if [ -f "$OVPN_CONF" ] && ! grep -q "^management " "$OVPN_CONF"; then
+            sed -i '/^status /a management 127.0.0.1 7505' "$OVPN_CONF"
+            systemctl restart openvpn@server 2>/dev/null || systemctl restart openvpn 2>/dev/null || true
+        fi
+
+        # ----------------------------------------------------------------
+        # Grupo de usuarios "solo panel" (sin shell) + bloqueo SSH
+        # El panel (Administración -> Crear usuario) crea cuentas sin shell
+        # en este grupo; aquí nos aseguramos de que SSH las rechace siempre,
+        # incluso en una instalación nueva.
+        # ----------------------------------------------------------------
+        getent group ovpn-panel >/dev/null || groupadd ovpn-panel
+
+        SSHD_CONF=/etc/ssh/sshd_config
+        if [ -f "$SSHD_CONF" ] && ! grep -q "^DenyGroups.*ovpn-panel" "$SSHD_CONF"; then
+            awk '
+                !inserted && /^Match/ {
+                    print "# Usuarios \"solo panel\" (sin shell, gestionados desde OpenVPN Manager):"
+                    print "# no deben poder ni intentar autenticarse por SSH."
+                    print "DenyGroups ovpn-panel"
+                    print ""
+                    inserted = 1
+                }
+                { print }
+                END {
+                    if (!inserted) {
+                        print ""
+                        print "# Usuarios \"solo panel\" (sin shell, gestionados desde OpenVPN Manager):"
+                        print "# no deben poder ni intentar autenticarse por SSH."
+                        print "DenyGroups ovpn-panel"
+                    }
+                }
+            ' "$SSHD_CONF" > "$SSHD_CONF.tmp" && mv "$SSHD_CONF.tmp" "$SSHD_CONF"
+
+            if sshd -t 2>/dev/null; then
+                systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+            else
+                echo "WARNING: could not validate sshd_config after adding DenyGroups ovpn-panel;" >&2
+                echo "         check /etc/ssh/sshd_config manually" >&2
+            fi
+        fi
+
+        # ----------------------------------------------------------------
+        # Firewall: abrir puerto 12322
+        # Usamos "iptables-legacy" explicitamente, nunca "iptables" a secas:
+        # el simbolo "iptables" puede resolver a iptables-nft o a
+        # iptables-legacy segun como este configurado update-alternatives
+        # en cada maquina, y las reglas reales de este appliance (las que
+        # gestiona /etc/iptables.up.rules) viven en el backend legacy. Si
+        # "iptables" resolviera a nft aqui, esta regla quedaria en un
+        # backend distinto al del resto del firewall, invisible para el
+        # trafico real (bug real encontrado durante el desarrollo de la
+        # funcion de Rangos de acceso, ver mas abajo).
+        # ----------------------------------------------------------------
+        RULES=/etc/iptables.up.rules
+        if [ -f "$RULES" ] && ! grep -q "dport 12322" "$RULES"; then
+            sed -i '/dport 12321 -j ACCEPT/a -A INPUT -p tcp -m tcp --dport 12322 -j ACCEPT' "$RULES"
+        fi
+        iptables-legacy -C INPUT -p tcp -m tcp --dport 12322 -j ACCEPT 2>/dev/null || \
+            iptables-legacy -A INPUT -p tcp -m tcp --dport 12322 -j ACCEPT
+
+        # ----------------------------------------------------------------
+        # Rangos de acceso: cadena OVPN_ACL + usuario dedicado + sondeador
+        #
+        # "Rangos de acceso" (panel -> crear/renovar cliente) restringe a
+        # que redes internas puede llegar un cliente VPN concreto. La
+        # aplicacion real se hace con un cortafuegos en el propio servidor
+        # (no basta con rutas del lado cliente, que el propio usuario
+        # podria saltarse anadiendo rutas manuales).
+        #
+        # Diseno: un servicio systemd aparte (ovpn-acl-poller), FUERA del
+        # proceso de OpenVPN, sondea la interfaz de gestion cada 2s y
+        # reconstruye la cadena OVPN_ACL segun quien esta conectado ahora
+        # mismo y que rango tiene configurado. Se descarto deliberadamente
+        # usar --client-connect/--client-disconnect de OpenVPN: ese gancho
+        # se ejecuta ya dentro del chroot y como "nobody" (ver "chroot" y
+        # "user nobody" en server.conf), lo que habria exigido replicar
+        # iptables-legacy y sus librerias dentro de la jaula — mucho mas
+        # fragil ante una actualizacion de OpenVPN que este sondeo, que
+        # solo depende de la interfaz de gestion (API publica y estable).
+        # ----------------------------------------------------------------
+
+        # Usuario/grupo dedicados para el sondeador (nunca reusar "nobody":
+        # ya lo usa OpenVPN para otra cosa, y systemd avisa de que
+        # compartirlo entre servicios no relacionados no es buena practica).
+        getent passwd ovpn-acl >/dev/null || \
+            useradd --system --no-create-home --shell /usr/sbin/nologin --user-group ovpn-acl
+
+        # clients_meta.json contiene los rangos de cada cliente; el
+        # sondeador (usuario ovpn-acl) necesita poder leerlo.
+        if [ -f /var/www/openvpn/clients_meta.json ]; then
+            chgrp ovpn-acl /var/www/openvpn/clients_meta.json 2>/dev/null || true
+        fi
+
+        # Cadena OVPN_ACL enganchada a FORWARD, persistida en
+        # /etc/iptables.up.rules (mismo fichero/mecanismo que el resto del
+        # firewall de este appliance) mas aplicada en caliente.
+        if [ -f "$RULES" ] && ! grep -q ":OVPN_ACL" "$RULES"; then
+            awk '
+                BEGIN { in_filter = 0; declared = 0; jumped = 0 }
+                /^\*filter/ { in_filter = 1; print; next }
+                in_filter && /^COMMIT/ { in_filter = 0; print; next }
+                in_filter && !declared && /^:/ { print; next }
+                in_filter && !declared && !/^:/ {
+                    print ":OVPN_ACL - [0:0]"
+                    declared = 1
+                }
+                in_filter && declared && !jumped && /^-A/ {
+                    print "-A FORWARD -i tun+ -j OVPN_ACL"
+                    jumped = 1
+                }
+                { print }
+            ' "$RULES" > "$RULES.tmp" && mv "$RULES.tmp" "$RULES"
+        fi
+        iptables-legacy -N OVPN_ACL 2>/dev/null || true
+        iptables-legacy -C FORWARD -i tun+ -j OVPN_ACL 2>/dev/null || \
+            iptables-legacy -I FORWARD 1 -i tun+ -j OVPN_ACL
+
+        # Vaciar OVPN_ACL cada vez que arranca openvpn@server (no solo al
+        # reiniciar la maquina): evita reglas huerfanas si el servicio se
+        # cae sin pasar por una desconexion limpia de sus clientes.
+        mkdir -p /etc/systemd/system/openvpn@server.service.d
+        cat > /etc/systemd/system/openvpn@server.service.d/ovpn-acl-flush.conf <<'EOF'
+[Service]
+ExecStartPre=-/usr/sbin/iptables-legacy -F OVPN_ACL
+EOF
+
+        # ----------------------------------------------------------------
+        # IP fija: ruta al rango contiguo al pool dinamico de OpenVPN
+        # (un bloque /30 por cliente, misma convencion net30 que ya usa
+        # el pool). Se calcula a partir del "server" real de esta maquina
+        # (nunca un valor fijo), y se comprueba antes que ese rango no
+        # colisiona con ninguna ruta ya existente en el sistema.
+        # ----------------------------------------------------------------
+        if [ -f "$OVPN_CONF" ]; then
+            STATIC_NET_INFO=$(python3 -c "
+import ipaddress, re
+try:
+    with open('$OVPN_CONF') as f:
+        conf = f.read()
+    m = re.search(r'^server\s+(\S+)\s+(\S+)', conf, re.M)
+    if m:
+        net = ipaddress.ip_network(f'{m.group(1)}/{m.group(2)}', strict=False)
+        static_net = ipaddress.ip_network(
+            (int(net.network_address) + net.num_addresses, net.prefixlen), strict=False)
+        gateway = net.network_address + 2
+        print(f'{static_net.network_address} {static_net.netmask} {static_net.with_prefixlen} {gateway}')
+except Exception:
+    pass
+" 2>/dev/null)
+            if [ -n "$STATIC_NET_INFO" ]; then
+                STATIC_ADDR=$(echo "$STATIC_NET_INFO" | awk '{print $1}')
+                STATIC_MASK=$(echo "$STATIC_NET_INFO" | awk '{print $2}')
+                STATIC_CIDR=$(echo "$STATIC_NET_INFO" | awk '{print $3}')
+                STATIC_GATEWAY=$(echo "$STATIC_NET_INFO" | awk '{print $4}')
+
+                if ! grep -q "# ovpn-manager-static-ip" "$OVPN_CONF"; then
+                    if [ -z "$(ip route show "$STATIC_CIDR" 2>/dev/null)" ]; then
+                        echo "route $STATIC_ADDR $STATIC_MASK  # ovpn-manager-static-ip" >> "$OVPN_CONF"
+                    else
+                        echo "WARNING: the computed static IP range ($STATIC_CIDR) is already" >&2
+                        echo "         in use on this machine; the panel's static IP feature" >&2
+                        echo "         was not activated. Check $OVPN_CONF manually if you need it." >&2
+                    fi
+                fi
+
+                # Aplicar la ruta EN CALIENTE, siempre (no solo la primera
+                # vez que se anade la linea a server.conf). Una directiva
+                # "route" de OpenVPN solo se instala en el kernel cuando el
+                # PROCESO arranca y lee su configuracion — si openvpn@server
+                # ya estaba corriendo antes de esta actualizacion (caso
+                # normal en un upgrade), la linea quedaria escrita en el
+                # fichero pero invisible para el proceso real hasta el
+                # siguiente reinicio natural. Sin este paso, un cliente con
+                # IP fija recibiria las rutas de ida correctamente pero el
+                # servidor no sabria devolver las respuestas — bug real
+                # encontrado en produccion. Usamos el mismo "gateway" (la
+                # segunda IP del pool dinamico) que OpenVPN usa para sus
+                # propias rutas, sin reiniciar nada ni desconectar clientes.
+                ip route replace "$STATIC_CIDR" via "$STATIC_GATEWAY" 2>/dev/null || true
+            fi
+        fi
+
+        # ----------------------------------------------------------------
+        # Migracion: limpiar el bloque "Rangos de acceso" que versiones
+        # anteriores del panel escribian dentro del .ovpn del cliente
+        # (routes informativos, sin ningun efecto en el control de acceso
+        # real — eso siempre lo hace el cortafuegos del servidor). Se opto
+        # por no tocar nunca mas el .ovpn, asi que dejamos el fichero tal
+        # como lo genera el propio "openvpn-addclient" de TurnKey, sin
+        # ningun dato añadido por el panel. Idempotente: si no encuentra el
+        # marcador no hace nada, seguro de ejecutar en cada actualizacion.
+        # ----------------------------------------------------------------
+        python3 -c "
+import glob
+KEY_DIR = '/etc/openvpn/easy-rsa/keys'
+MARKER = '# Rangos de acceso asignados por OpenVPN Manager'
+for path in glob.glob(f'{KEY_DIR}/*.ovpn'):
+    try:
+        with open(path) as f:
+            content = f.read()
+    except OSError:
+        continue
+    idx = content.find(MARKER)
+    if idx != -1:
+        with open(path, 'w') as f:
+            f.write(content[:idx].rstrip('\n') + '\n')
+" 2>/dev/null || true
+
+        # ----------------------------------------------------------------
+        # Menú TurnKey
+        # ----------------------------------------------------------------
+        python3 /usr/lib/openvpn-manager/setup-menu.py
+
+        # ----------------------------------------------------------------
+        # Servicios
+        # stunnel4@openvpn-gui: unidad de plantilla disponible en Debian 11+
+        # ----------------------------------------------------------------
+        # "start" no hace nada si el servicio ya está corriendo (upgrade in-place):
+        # el proceso viejo se queda cargado en memoria con el código antiguo.
+        # Usamos "restart" para garantizar que una actualización aplica de verdad.
+        systemctl daemon-reload
+        systemctl enable openvpn-gui
+        systemctl restart openvpn-gui || true
+        systemctl enable stunnel4@openvpn-gui
+        systemctl restart stunnel4@openvpn-gui || true
+
+        # Aplica ya el permiso de /run/xtables.lock (tmpfiles.d) sin
+        # esperar al proximo arranque de la maquina.
+        systemd-tmpfiles --create /usr/lib/tmpfiles.d/openvpn-manager-acl.conf 2>/dev/null || true
+
+        systemctl enable ovpn-acl-poller
+        systemctl restart ovpn-acl-poller || true
+
+        # ----------------------------------------------------------------
+        # Geolocalizacion (pestaña "Mapa"): base de datos DB-IP City Lite,
+        # descargada aqui y actualizada despues automaticamente cada mes
+        # via el timer. Ninguna IP de cliente sale nunca de este servidor
+        # -- el lookup se hace en local contra este fichero. La primera
+        # descarga se lanza en segundo plano (--no-block) para no retrasar
+        # la instalacion; si falla por falta de red en este momento, el
+        # timer (Persistent=true) la reintentara poco despues de arrancar
+        # o en su proximo disparo mensual.
+        # ----------------------------------------------------------------
+        mkdir -p /var/lib/openvpn-manager
+        systemctl enable ovpn-geoip-update.timer
+        systemctl restart ovpn-geoip-update.timer || true
+        systemctl --no-block start ovpn-geoip-update.service || true
+
+        echo ""
+        echo "OpenVPN Manager installed successfully."
+        IP=$(hostname -I | awk '{print $1}')
+        echo "  Access at: https://${IP}:12322/"
+        echo "  Credentials: system Linux users (PAM)"
+        echo ""
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="{{ lang() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenVPN Manager – Logs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+    header {
+      background: #1a2332; color: #fff; padding: 0 24px; min-height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    }
+    header .brand { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .gpinfor-link {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: #6b8aad; text-decoration: none; line-height: 1;
+    }
+    .gpinfor-link:hover { color: #aac4e0; }
+    header .user-area { font-size: 13px; color: #aac4e0; display: flex; align-items: center; gap: 14px; }
+    header .user-area a {
+      color: #aac4e0; text-decoration: none; padding: 4px 10px;
+      border: 1px solid #3a5068; border-radius: 4px; transition: background .2s;
+    }
+    header .user-area a:hover { background: #253445; color: #fff; }
+    .lang-switch { display: flex; gap: 4px; }
+    .lang-switch a { padding: 3px 8px; font-size: 11px; }
+    .lang-switch a.active { background: #2980b9; border-color: #2980b9; color: #fff; }
+
+    .nav-tabs {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px;
+      display: flex; gap: 4px; border-bottom: 2px solid #dee2e6;
+    }
+    .nav-tab {
+      padding: 10px 20px; font-size: 13px; font-weight: 600; color: #6c757d;
+      text-decoration: none; border: 1px solid transparent;
+      border-bottom: none; border-radius: 6px 6px 0 0;
+      background: transparent; cursor: pointer; margin-bottom: -2px;
+      transition: color .15s, background .15s;
+    }
+    .nav-tab:hover { color: #2980b9; background: #f0f4f8; }
+    .nav-tab.active {
+      color: #1a2332; background: #fff;
+      border-color: #dee2e6; border-bottom-color: #fff;
+    }
+
+    main { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; overflow: hidden; }
+    .card-header {
+      padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid #e9ecef;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    }
+    .card-header h2 { font-size: 15px; font-weight: 600; color: #444; }
+
+    .log-tabs { display: flex; gap: 6px; }
+    .log-tab {
+      padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      cursor: pointer; border: 1px solid #ddd; background: #f0f2f5; color: #666;
+      text-decoration: none; transition: all .15s;
+    }
+    .log-tab.active { background: #1a2332; color: #fff; border-color: #1a2332; }
+    .log-tab:hover:not(.active) { background: #e0e5ea; }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 12px 20px; border-bottom: 1px solid #e9ecef; background: #fafbfc;
+    }
+    .toolbar label { font-size: 12px; font-weight: 600; color: #666; }
+    .toolbar input[type=text] {
+      padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px;
+      font-size: 13px; width: 220px;
+    }
+    .toolbar input[type=text]:focus { outline: none; border-color: #2980b9; }
+    .toolbar select {
+      padding: 5px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;
+    }
+    .btn {
+      display: inline-block; padding: 6px 14px; border: none; border-radius: 5px;
+      font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none;
+      transition: opacity .15s; background: #2980b9; color: #fff;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-secondary { background: #95a5a6; }
+
+    /* Log viewer */
+    .log-container {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 12px; line-height: 1.6; padding: 16px 20px;
+      max-height: 620px; overflow-y: auto; background: #1e2a3a; color: #cdd9e8;
+    }
+    .log-line { display: block; padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+    .log-line:hover { background: rgba(255,255,255,.05); }
+
+    /* Colores por tipo de evento */
+    .log-connected   { color: #4ec99a; }   /* verde — conexión establecida */
+    .log-disconnect  { color: #f07070; }   /* rojo — desconexión */
+    .log-tls         { color: #f0c05a; }   /* amarillo — TLS/certificado */
+    .log-error       { color: #ff6b6b; font-weight: bold; }
+    .log-warn        { color: #f0a050; }
+    .log-info        { color: #7ab8f0; }   /* azul — info general */
+    .log-ok          { color: #4ec99a; }   /* verde — operación OK */
+    .log-login       { color: #a5d6f7; }   /* azul claro — login */
+    .log-dim         { color: #6a7f96; }   /* gris — ruido del sistema */
+
+    .empty-log { text-align: center; padding: 40px; color: #6a7f96; font-family: inherit; }
+
+    .log-count {
+      font-size: 11px; color: #888; padding: 8px 20px;
+      border-top: 1px solid #e9ecef; background: #fafbfc; text-align: right;
+    }
+
+    .refresh-info { font-size: 11px; color: #888; }
+
+    /* Filtros rápidos */
+    .quick-filters {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 8px 20px 10px; border-bottom: 1px solid #e9ecef; background: #f5f7fa;
+    }
+    .quick-filters .qf-label { font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: .4px; margin-right: 2px; }
+    .qf-btn {
+      padding: 4px 12px; border-radius: 14px; font-size: 12px; font-weight: 600;
+      cursor: pointer; border: 1px solid #ddd; background: #fff; color: #555;
+      text-decoration: none; transition: all .15s; white-space: nowrap;
+    }
+    .qf-btn:hover { border-color: #aaa; color: #222; background: #eee; }
+    .qf-btn.active { color: #fff; border-color: transparent; }
+    .qf-all.active    { background: #556b8a; }
+    .qf-events.active { background: #27ae60; }
+
+    /* Highlight del término buscado */
+    mark { background: #f0c05a33; color: #f0c05a; border-radius: 2px; }
+
+    #_tooltip {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: #1a2332; color: #fff; font-size: 11px;
+      padding: 5px 10px; border-radius: 5px;
+      line-height: 1.4; opacity: 0; transition: opacity .15s;
+      max-width: 260px; white-space: normal; text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>&#128274; OpenVPN Manager</h1>
+    <a href="https://gpinfor.com/" target="_blank" rel="noopener" class="gpinfor-link">gpinfor.com · v{{ app_version }}</a>
+  </div>
+  <div class="user-area">
+    <div class="lang-switch">
+      <a href="/lang/en?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'en' }}">EN</a>
+      <a href="/lang/es?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'es' }}">ES</a>
+    </div>
+    <span>{{ user }}</span>
+    <a href="/logout">{{ t('nav.logout') }}</a>
+  </div>
+</header>
+
+<div id="_tooltip"></div>
+<nav class="nav-tabs">
+  <a class="nav-tab" href="/">&#128101; {{ t('nav.clients') }}</a>
+  <a class="nav-tab" href="/access-ranges">&#127760; {{ t('nav.ranges') }}</a>
+  <a class="nav-tab" href="/staticip">&#128204; {{ t('nav.staticip') }}</a>
+  <a class="nav-tab" href="/map">&#128506; {{ t('nav.map') }}</a>
+  {% if user == 'root' %}<a class="nav-tab" href="/admin/users">&#128272; {{ t('nav.admin') }}</a>{% endif %}
+  <a class="nav-tab active" href="/logs">&#128203; {{ t('nav.logs') }}</a>
+  <a class="nav-tab" href="/help">&#10067; {{ t('nav.help') }}</a>
+</nav>
+
+<main>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>&#128203; {{ t('log.title') }}</h2>
+      </div>
+      <div class="log-tabs">
+        <a class="log-tab {% if tab == 'vpn' %}active{% endif %}"
+           href="/logs?tab=vpn&n={{ n }}&q={{ search | urlencode }}"
+           data-tip="{{ t('log.tab_vpn_tip') }}">
+          &#127760; {{ t('log.tab_vpn') }}
+        </a>
+        <a class="log-tab {% if tab == 'audit' %}active{% endif %}"
+           href="/logs?tab=audit&n={{ n }}&q={{ search | urlencode }}"
+           data-tip="{{ t('log.tab_audit_tip') }}">
+          &#128274; {{ t('log.tab_audit') }}
+        </a>
+      </div>
+    </div>
+
+    <!-- Filtros rápidos -->
+    {% set _qbase = '/logs?tab=' ~ tab ~ '&n=' ~ n ~ ('&q=' ~ (search | urlencode) if search else '') %}
+    <div class="quick-filters">
+      <span class="qf-label">{{ t('log.quick_filter_label') }}</span>
+      <a class="qf-btn qf-all    {% if not quick_filter %}active{% endif %}"
+         href="{{ _qbase }}"
+         data-tip="{{ t('log.filter_all_tip') }}">{{ t('log.filter_all') }}</a>
+      <a class="qf-btn qf-events {% if quick_filter == 'events' %}active{% endif %}"
+         href="{{ _qbase }}&f=events"
+         data-tip="{% if tab == 'vpn' %}{{ t('log.filter_events_vpn_tip') }}{% else %}{{ t('log.filter_events_audit_tip') }}{% endif %}">
+        {% if tab == 'vpn' %}&#9679; {{ t('log.filter_events_vpn') }}{% else %}&#9881; {{ t('log.filter_events_audit') }}{% endif %}
+      </a>
+    </div>
+
+    <!-- Toolbar de búsqueda -->
+    <form method="GET" action="/logs" class="toolbar">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      {% if quick_filter %}<input type="hidden" name="f" value="{{ quick_filter }}">{% endif %}
+      <label for="searchInput">{{ t('log.search_label') }}</label>
+      <input type="text" name="q" value="{{ search }}" placeholder="{{ t('log.search_placeholder') }}" id="searchInput"
+             data-tip="{{ t('log.search_tip') }}">
+      <label for="nSelect">{{ t('log.last_label') }}</label>
+      <select name="n" id="nSelect" data-tip="{{ t('log.last_tip') }}">
+        {% for opt in [50, 100, 200, 500, 1000] %}
+          <option value="{{ opt }}" {% if opt == n %}selected{% endif %}>{{ t('log.lines_option', n=opt) }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn"
+              data-tip="{{ t('log.filter_btn_tip') }}">&#128269; {{ t('log.filter_btn') }}</button>
+      <a href="/logs?tab={{ tab }}&n={{ n }}{% if quick_filter %}&f={{ quick_filter }}{% endif %}" class="btn btn-secondary"
+         data-tip="{{ t('log.clear_search_tip') }}">&#10005; {{ t('log.clear_search_btn') }}</a>
+      <a href="/logs?tab={{ tab }}&n={{ n }}&q={{ search | urlencode }}{% if quick_filter %}&f={{ quick_filter }}{% endif %}" class="btn btn-secondary btn-sm"
+         data-tip="{{ t('log.refresh_tip') }}">&#8635; {{ t('log.refresh_btn') }}</a>
+    </form>
+
+    <!-- Visor de logs -->
+    <div class="log-container" id="logContainer">
+      {% if tab == 'vpn' %}
+        {% if vpn_lines %}
+          {% for line in vpn_lines %}
+            <span class="log-line {{ line | vpn_class }}">{{ line | highlight(search) }}</span>
+          {% endfor %}
+        {% else %}
+          <div class="empty-log">{{ t('log.empty_vpn') }}{% if search %}{{ t('log.empty_search_suffix', search=search) }}{% endif %}.</div>
+        {% endif %}
+      {% else %}
+        {% if audit_lines %}
+          {% for line in audit_lines %}
+            <span class="log-line {{ line | audit_class }}">{{ line | highlight(search) }}</span>
+          {% endfor %}
+        {% else %}
+          <div class="empty-log">{{ t('log.empty_audit') }}{% if search %}{{ t('log.empty_search_suffix', search=search) }}{% endif %}.</div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="log-count">
+      {% if tab == 'vpn' %}
+        {{ t('log.lines_shown', n=(vpn_lines | length)) }} · Log: <code>journalctl -u openvpn@server</code>
+      {% else %}
+        {{ t('log.lines_shown', n=(audit_lines | length)) }} · Log: <code>/var/log/openvpn-gui.log</code>
+      {% endif %}
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Scroll al final del log al cargar
+  var c = document.getElementById('logContainer');
+  if (c) c.scrollTop = c.scrollHeight;
+
+  // Auto-refresh cada 30 segundos (preserva tab, n, q y f)
+  {% if not search %}
+  setTimeout(function() { location.reload(); }, 30000);
+  {% endif %}
+
+  // Tooltip dinámico
+  var _tip = document.getElementById('_tooltip');
+  document.querySelectorAll('[data-tip]').forEach(function(el) {
+    el.addEventListener('mouseenter', function() {
+      _tip.textContent = el.getAttribute('data-tip');
+      _tip.style.left = '-9999px';
+      _tip.style.top  = '-9999px';
+      _tip.style.opacity = '1';
+      var r  = el.getBoundingClientRect();
+      var tw = _tip.offsetWidth;
+      var th = _tip.offsetHeight;
+      var left = r.left + r.width / 2 - tw / 2;
+      var top  = r.top - th - 8;
+      if (left < 6) left = 6;
+      if (left + tw > window.innerWidth - 6) left = window.innerWidth - tw - 6;
+      if (top < 6) top = r.bottom + 8;
+      _tip.style.left = left + 'px';
+      _tip.style.top  = top  + 'px';
+    });
+    el.addEventListener('mouseleave', function() { _tip.style.opacity = '0'; });
+  });
+</script>
+
+</body>
+</html>

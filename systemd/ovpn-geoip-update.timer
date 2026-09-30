@@ -1,0 +1,10 @@
+[Unit]
+Description=Actualiza mensualmente la base de datos GeoIP (DB-IP City Lite) de OpenVPN Manager
+
+[Timer]
+OnCalendar=monthly
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

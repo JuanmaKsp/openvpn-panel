@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="{{ lang() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenVPN Manager – Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a2332;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      padding: 40px;
+      width: 360px;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .logo h1 {
+      font-size: 22px;
+      color: #1a2332;
+      margin-top: 8px;
+    }
+    .logo span {
+      display: inline-block;
+      background: #2980b9;
+      color: #fff;
+      border-radius: 50%;
+      width: 56px;
+      height: 56px;
+      line-height: 56px;
+      font-size: 28px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+      margin-top: 16px;
+    }
+    input[type=text], input[type=password] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      transition: border-color .2s;
+    }
+    input[type=text]:focus, input[type=password]:focus {
+      outline: none;
+      border-color: #2980b9;
+    }
+    .pw-wrap { position: relative; }
+    .pw-wrap input { padding-right: 34px !important; }
+    .pw-toggle {
+      position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; font-size: 15px;
+      color: #888; padding: 4px 6px; line-height: 1;
+    }
+    .pw-toggle:hover { color: #444; }
+    .error-msg {
+      background: #fdecea;
+      color: #c0392b;
+      border: 1px solid #e74c3c;
+      border-radius: 5px;
+      padding: 10px 12px;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    button[type=submit] {
+      width: 100%;
+      margin-top: 24px;
+      padding: 12px;
+      background: #2980b9;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    button[type=submit]:hover { background: #2471a3; }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .footer a {
+      display: inline-flex; align-items: center; gap: 5px;
+      color: #aaa; text-decoration: none; margin-top: 8px;
+    }
+    .footer a:hover { color: #666; }
+    .lang-switch {
+      position: fixed; top: 14px; right: 16px;
+      font-size: 12px; display: flex; gap: 4px;
+    }
+    .lang-switch a {
+      color: #aac4e0; text-decoration: none; padding: 3px 8px;
+      border: 1px solid #3a5068; border-radius: 4px;
+    }
+    .lang-switch a.active { background: #2980b9; color: #fff; border-color: #2980b9; }
+    .lang-switch a:hover:not(.active) { background: #253445; color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="lang-switch">
+    <a href="/lang/en?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'en' }}">EN</a>
+    <a href="/lang/es?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'es' }}">ES</a>
+  </div>
+  <div class="card">
+    <div class="logo">
+      <span>&#128274;</span>
+      <h1>{{ t('login.title') }}</h1>
+    </div>
+    {% if error %}
+    <div class="error-msg">{{ error }}</div>
+    {% endif %}
+    <form method="POST" action="/login">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <label for="username">{{ t('login.username') }}</label>
+      <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+      <label for="password">{{ t('login.password') }}</label>
+      <div class="pw-wrap">
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+        <button type="button" class="pw-toggle" tabindex="-1" onclick="togglePw('password', this)">&#128065;</button>
+      </div>
+      <button type="submit">{{ t('login.submit') }}</button>
+    </form>
+    <div class="footer">
+      {{ t('login.footer') }} · v{{ app_version }}<br>
+      <a href="https://gpinfor.com/" target="_blank" rel="noopener">gpinfor.com</a>
+    </div>
+  </div>
+<script>
+  var PW_LABELS = { show: {{ t('pw.show') | tojson }}, hide: {{ t('pw.hide') | tojson }} };
+  function togglePw(id, btn) {
+    var el = document.getElementById(id);
+    if (el.type === 'password') {
+      el.type = 'text';
+      btn.innerHTML = '&#128584;';
+      btn.setAttribute('aria-label', PW_LABELS.hide);
+    } else {
+      el.type = 'password';
+      btn.innerHTML = '&#128065;';
+      btn.setAttribute('aria-label', PW_LABELS.show);
+    }
+  }
+</script>
+</body>
+</html>
