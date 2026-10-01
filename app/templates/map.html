@@ -114,11 +114,12 @@
       border-top: 1px solid #f0f0f0;
     }
     .map-legend .legend-item { display: flex; align-items: center; gap: 6px; }
-    .legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
-    .legend-dot-fixed { background: #2980b9; }
-    .legend-dot-mobile { background: #e67e22; }
+    .legend-pin { width: 14px; height: 23px; display: inline-block; flex: none; }
 
     .history-isp { color: #999; font-size: 11px; }
+
+    .mobile-marker-icon { background: transparent !important; border: none !important; }
+    .mobile-marker-icon svg { filter: drop-shadow(1px 2px 1px rgba(0,0,0,.4)); }
 
     @media (max-width: 700px) {
       main { padding: 0 10px; }
@@ -172,8 +173,20 @@
     <p class="hint">{{ t('map.intro') }}</p>
     <div id="mapContainer"></div>
     <div class="map-legend">
-      <span class="legend-item"><span class="legend-dot legend-dot-fixed"></span>{{ t('map.legend_fixed') }}</span>
-      <span class="legend-item"><span class="legend-dot legend-dot-mobile"></span>{{ t('map.legend_mobile') }}</span>
+      <span class="legend-item">
+        <svg class="legend-pin" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#2980b9" stroke="#1f618d" stroke-width="1" d="M12.5 0C5.6 0 0 5.6 0 12.5c0 9.4 12.5 28.5 12.5 28.5S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0z"/>
+          <circle cx="12.5" cy="12.5" r="5" fill="#fff"/>
+        </svg>
+        {{ t('map.legend_fixed') }}
+      </span>
+      <span class="legend-item">
+        <svg class="legend-pin" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#e67e22" stroke="#b35900" stroke-width="1" d="M12.5 0C5.6 0 0 5.6 0 12.5c0 9.4 12.5 28.5 12.5 28.5S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0z"/>
+          <circle cx="12.5" cy="12.5" r="5" fill="#fff"/>
+        </svg>
+        {{ t('map.legend_mobile') }}
+      </span>
     </div>
   </div>
 
@@ -286,9 +299,19 @@
     document.getElementById('mapContainer').appendChild(emptyDiv);
   } else {
     var bounds = [];
+    var mobilePinIcon = L.divIcon({
+      className: 'mobile-marker-icon',
+      html: '<svg width="25" height="41" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">'
+          + '<path fill="#e67e22" stroke="#b35900" stroke-width="1" d="M12.5 0C5.6 0 0 5.6 0 12.5c0 9.4 12.5 28.5 12.5 28.5S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0z"/>'
+          + '<circle cx="12.5" cy="12.5" r="5" fill="#fff"/></svg>',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34]
+    });
+
     LOCATIONS.forEach(function(c) {
       var marker = c.is_mobile
-        ? L.circleMarker([c.lat, c.lon], {radius: 9, color: '#e67e22', weight: 2, fillColor: '#e67e22', fillOpacity: 0.85}).addTo(map)
+        ? L.marker([c.lat, c.lon], {icon: mobilePinIcon}).addTo(map)
         : L.marker([c.lat, c.lon]).addTo(map);
       var when = c.ts ? new Date(c.ts * 1000).toLocaleString() : '';
       var html = '<div class="popup-name">' + c.name + '</div>'
