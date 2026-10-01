@@ -50,6 +50,7 @@ POLL_INTERVAL  = 2  # segundos
 # app.py si puede leerlo sin mas: corre como root, que no esta sujeto a
 # comprobaciones DAC de lectura.
 GEO_DB_FILE = '/var/lib/openvpn-manager/dbip-city-lite.mmdb'
+GEO_ASN_DB_FILE = '/var/lib/openvpn-manager/dbip-asn-lite.mmdb'
 GEO_FILE    = '/var/lib/ovpn-acl/clients_geo.json'
 
 # Cache de "quien esta conectado ahora" para que app.py (badge de conexion
@@ -224,6 +225,80 @@ class _GeoReader:
 _geo_reader = _GeoReader()
 
 
+class _AsnReader:
+    """Mismo envoltorio perezoso que _GeoReader, para la base de datos de
+    operador/ASN (dbip-asn-lite). Se usa solo para mostrar el nombre del
+    ISP y para la deteccion best-effort de "posible conexion movil" --
+    nunca afecta a la ubicacion en el mapa, que viene de _GeoReader."""
+
+    def __init__(self):
+        self._reader = None
+        self._mtime = None
+
+    def _ensure_open(self):
+        if maxminddb is None:
+            return False
+        try:
+            mtime = os.path.getmtime(GEO_ASN_DB_FILE)
+        except OSError:
+            return False
+        if self._reader is None or mtime != self._mtime:
+            try:
+                if self._reader is not None:
+                    self._reader.close()
+                self._reader = maxminddb.open_database(GEO_ASN_DB_FILE)
+                self._mtime = mtime
+                log.info('base de datos ASN (re)cargada: %s', GEO_ASN_DB_FILE)
+            except Exception as e:
+                log.warning('no se pudo abrir la base de datos ASN %s: %s', GEO_ASN_DB_FILE, e)
+                self._reader = None
+                return False
+        return True
+
+    def lookup(self, ip):
+        if not self._ensure_open():
+            return None
+        try:
+            rec = self._reader.get(ip)
+        except (ValueError, OSError):
+            return None
+        if not rec:
+            return None
+        return rec.get('autonomous_system_organization') or None
+
+
+_asn_reader = _AsnReader()
+
+# Palabras que, si aparecen en el nombre del operador (ASN), indican con
+# razonable confianza que ese bloque de IP es de una red movil -- heuristica
+# de MEJOR ESFUERZO, no exhaustiva: los operadores grandes (Telefonica,
+# Orange, Vodafone) registran su trafico movil y fijo bajo el MISMO ASN /
+# mismo nombre de empresa, asi que su trafico movil real NO se detecta aqui
+# -- solo se marcan los casos en los que el propio nombre del operador ya lo
+# deja claro (MVNOs y operadores mono-movil). La AUSENCIA de la marca no
+# implica que la conexion sea fija, solo que no se pudo confirmar que fuera
+# movil con el nombre del ASN.
+_MOBILE_ORG_HINTS = ('MOVIL', 'MOBILE', 'WIRELESS', 'CELLULAR')
+
+
+def is_mobile_org(org):
+    if not org:
+        return False
+    upper = org.upper()
+    return any(hint in upper for hint in _MOBILE_ORG_HINTS)
+
+
+def asn_lookup(ip_str):
+    """{'isp': str, 'is_mobile': bool} o None si la IP no es publica, la
+    base de datos ASN no esta disponible, o no hay registro para esa IP."""
+    if not is_public_ip(ip_str):
+        return None
+    org = _asn_reader.lookup(ip_str)
+    if not org:
+        return None
+    return {'isp': org, 'is_mobile': is_mobile_org(org)}
+
+
 def is_public_ip(ip_str):
     """False para privadas/loopback/enlace-local/reservadas/multicast --
     esas nunca son geolocalizables y no tiene sentido intentarlo (ademas de
@@ -281,6 +356,9 @@ def update_geo_for_new_connections(newly_connected_names, connected):
         loc = geolocate(real_ip)
         if loc:
             entry.update(loc)
+        isp = asn_lookup(real_ip)
+        if isp:
+            entry.update(isp)
 
         history = geo.get(name, {}).get('history', [])
         history = [h for h in history if h.get('ip') != real_ip]  # quitar duplicado, si lo hay
@@ -289,8 +367,9 @@ def update_geo_for_new_connections(newly_connected_names, connected):
         geo[name] = {'history': history}
 
         changed = True
-        log.info('nueva conexion geolocalizada: name=%s ip=%s city=%s country=%s ips_distintas=%d',
-                  name, real_ip, entry.get('city', ''), entry.get('country_code', ''), len(history))
+        log.info('nueva conexion geolocalizada: name=%s ip=%s city=%s country=%s isp=%s ips_distintas=%d',
+                  name, real_ip, entry.get('city', ''), entry.get('country_code', ''),
+                  entry.get('isp', ''), len(history))
 
     if not changed:
         return
@@ -308,17 +387,19 @@ def _save_geo(geo):
 
 
 def retry_pending_geolocations():
-    """Reintenta geolocalizar entradas del historial que quedaron sin
-    ubicacion (sin 'lat') pero con una IP publica -- bug real encontrado en
-    produccion: un cliente que se conecta en los primeros segundos tras
-    instalar el paquete (mientras la base de datos GeoIP aun se esta
-    descargando en segundo plano) se geolocaliza en el instante exacto de
-    esa conexion, UNA sola vez; si en ese momento la base de datos todavia
-    no existia, antes se quedaba sin ubicacion para siempre, aunque la
-    descarga terminara un segundo despues. Aqui se revisa cada ciclo (barato:
+    """Reintenta resolver entradas del historial que quedaron sin ubicacion
+    (sin 'lat') y/o sin operador (sin 'isp'), con una IP publica -- bug real
+    encontrado en produccion: un cliente que se conecta en los primeros
+    segundos tras instalar el paquete (mientras las bases de datos GeoIP/ASN
+    aun se estan descargando en segundo plano) se resuelve en el instante
+    exacto de esa conexion, UNA sola vez; si en ese momento la base de datos
+    todavia no existia, antes se quedaba sin datos para siempre, aunque la
+    descarga terminara un segundo despues. 'lat' e 'isp' se reintentan por
+    separado porque vienen de dos bases de datos distintas que pueden no
+    terminar de descargarse a la vez. Aqui se revisa cada ciclo (barato:
     normalmente no hay ninguna entrada pendiente, y si la hubiera pero la
-    base de datos sigue sin estar disponible, geolocate() devuelve None de
-    inmediato sin tocar el fichero .mmdb)."""
+    base de datos sigue sin estar disponible, geolocate()/asn_lookup()
+    devuelven None de inmediato sin tocar el fichero .mmdb)."""
     try:
         with open(GEO_FILE) as f:
             geo = json.load(f)
@@ -328,17 +409,25 @@ def retry_pending_geolocations():
     changed = False
     for name, data in geo.items():
         for entry in data.get('history', []):
-            if 'lat' in entry:
-                continue  # ya tiene ubicacion
             ip = entry.get('ip')
             if not ip or not is_public_ip(ip):
                 continue  # privada/invalida: nunca va a resolver, no reintentar
-            loc = geolocate(ip)
-            if loc:
-                entry.update(loc)
-                changed = True
-                log.info('ubicacion pendiente resuelta en reintento: name=%s ip=%s city=%s country=%s',
-                          name, ip, loc.get('city', ''), loc.get('country_code', ''))
+
+            if 'lat' not in entry:
+                loc = geolocate(ip)
+                if loc:
+                    entry.update(loc)
+                    changed = True
+                    log.info('ubicacion pendiente resuelta en reintento: name=%s ip=%s city=%s country=%s',
+                              name, ip, loc.get('city', ''), loc.get('country_code', ''))
+
+            if 'isp' not in entry:
+                isp = asn_lookup(ip)
+                if isp:
+                    entry.update(isp)
+                    changed = True
+                    log.info('operador pendiente resuelto en reintento: name=%s ip=%s isp=%s',
+                              name, ip, isp.get('isp', ''))
 
     if changed:
         _save_geo(geo)

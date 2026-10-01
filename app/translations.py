@@ -372,11 +372,12 @@ TRANSLATIONS = {
 
         'help.map.title':    'Mapa',
         'help.map.subtitle': 'De dónde se conectó cada cliente por última vez',
-        'help.map.body': """<p>Muestra la ubicación aproximada (a nivel de ciudad) desde la que cada cliente estableció su última conexión — un punto por cliente, que se sobrescribe en cada conexión nueva. No se guarda un historial de ubicaciones pasadas.</p>
+        'help.map.body': """<p>Muestra la ubicación aproximada (a nivel de ciudad) de la última conexión de cada cliente — un marcador por cliente, con la IP más reciente. Además, debajo del mapa hay una tabla con el <strong>historial de hasta las 5 últimas IPs distintas</strong> desde las que se ha conectado cada cliente.</p>
         <p><strong>Cómo se calcula:</strong> la IP real del cliente (la misma que ya ve el propio servidor OpenVPN al aceptar la conexión) se busca en una base de datos de geolocalización descargada y almacenada en este mismo servidor. Esa IP <strong>nunca se envía a ningún servicio externo</strong> — toda la resolución ocurre en local.</p>
-        <p>Lo único que sale de este servidor hacia fuera es la descarga periódica (mensual) de la propia base de datos, y las teselas del mapa que pide el navegador del administrador a OpenStreetMap al ver esta página — ninguna de las dos cosas incluye datos de ningún cliente.</p>
+        <p>Lo único que sale de este servidor hacia fuera es la descarga periódica (mensual) de las propias bases de datos, y las teselas del mapa que pide el navegador del administrador a OpenStreetMap al ver esta página — ninguna de las dos cosas incluye datos de ningún cliente.</p>
         <p>Un cliente aparece en <strong>"Sin ubicación disponible"</strong> si todavía no se ha conectado nunca, si se conectó desde una IP privada/local (habitual en pruebas dentro de la misma red), o si esa IP no tiene registro en la base de datos.</p>
-        <div class="info-box">&#128161; La precisión es a nivel de ciudad, no de dirección exacta — suficiente para detectar patrones o accesos inesperados, no para una localización precisa.</div>""",
+        <p><strong>Operador y marcador naranja:</strong> junto a cada IP se muestra también el nombre del operador de Internet (ISP), igualmente resuelto en local con una segunda base de datos gratuita (ASN). Cuando el propio nombre del operador deja claro que es una red exclusivamente móvil, el marcador en el mapa se pinta de naranja. <strong>Esta detección es de mejor esfuerzo, no exhaustiva:</strong> los grandes operadores españoles (Movistar, Orange, Vodafone...) registran su tráfico móvil y fijo bajo el mismo nombre de empresa, así que una conexión móvil de alguno de ellos puede aparecer en azul igualmente — el color naranja es una pista adicional, no una certeza, y su ausencia no garantiza que la conexión sea fija.</p>
+        <div class="info-box">&#128161; La precisión es a nivel de ciudad, no de dirección exacta. Además, en conexiones móviles la ciudad mostrada suele ser la de la pasarela de datos del operador, no necesariamente la ubicación física real del dispositivo — esto es una limitación de cualquier geolocalización por IP, no de este panel.</div>""",
 
         'help.status.title':    'Estados de los clientes',
         'help.status.subtitle': 'Qué significa cada etiqueta y punto de color',
@@ -432,6 +433,9 @@ TRANSLATIONS = {
         'map.th_history':            'Historial de IPs',
         'map.history_no_data':       'Sin datos de ubicación',
         'map.popup_last_connection': 'Última conexión',
+        'map.popup_isp':             'Operador',
+        'map.legend_fixed':          'Fija o sin dato de operador',
+        'map.legend_mobile':         'Posible conexión móvil (según el nombre del operador)',
         'map.empty_no_data':         'Todavía no hay ninguna ubicación registrada.',
     },
     'en': {
@@ -793,11 +797,12 @@ TRANSLATIONS = {
 
         'help.map.title':    'Map',
         'help.map.subtitle': 'Where each client last connected from',
-        'help.map.body': """<p>Shows the approximate location (city-level) each client's last connection came from — one point per client, overwritten on every new connection. No history of past locations is kept.</p>
+        'help.map.body': """<p>Shows the approximate location (city-level) of each client's most recent connection — one marker per client, with the latest IP. Below the map there's also a table with the <strong>history of up to the last 5 distinct IPs</strong> each client has connected from.</p>
         <p><strong>How it’s computed:</strong> the client’s real IP (the same one the OpenVPN server itself already sees when accepting the connection) is looked up in a geolocation database downloaded and stored on this same server. That IP is <strong>never sent to any external service</strong> — the whole lookup happens locally.</p>
-        <p>The only things that leave this server are the periodic (monthly) download of the database itself, and the map tiles the admin’s own browser requests from OpenStreetMap when viewing this page — neither includes any client data.</p>
+        <p>The only things that leave this server are the periodic (monthly) download of these databases, and the map tiles the admin’s own browser requests from OpenStreetMap when viewing this page — neither includes any client data.</p>
         <p>A client shows up under <strong>"No location available"</strong> if it has never connected yet, if it connected from a private/local IP (common when testing within the same network), or if that IP has no record in the database.</p>
-        <div class="info-box">&#128161; Accuracy is city-level, not an exact address — enough to spot patterns or unexpected access, not for precise tracking.</div>""",
+        <p><strong>Carrier and the orange marker:</strong> the Internet carrier (ISP) name is also shown next to each IP, resolved locally too, from a second free database (ASN). When the carrier's own name makes it clear it's a mobile-only network, the map marker is shown in orange. <strong>This detection is best-effort, not exhaustive:</strong> large Spanish carriers (Movistar, Orange, Vodafone...) register their mobile and fixed traffic under the same company name, so a mobile connection from one of them can still show up in blue — orange is an extra hint, not a certainty, and its absence doesn't guarantee the connection is fixed.</p>
+        <div class="info-box">&#128161; Accuracy is city-level, not an exact address. Also, on mobile connections the city shown is usually the carrier's data gateway, not necessarily the device's real physical location — this is a limitation of IP-based geolocation in general, not of this panel.</div>""",
 
         'help.status.title':    'Client statuses',
         'help.status.subtitle': 'What each label and colored dot means',
@@ -853,6 +858,9 @@ TRANSLATIONS = {
         'map.th_history':            'IP history',
         'map.history_no_data':       'No location data',
         'map.popup_last_connection': 'Last connection',
+        'map.popup_isp':             'Carrier',
+        'map.legend_fixed':          'Fixed, or no carrier data',
+        'map.legend_mobile':         'Possible mobile connection (based on carrier name)',
         'map.empty_no_data':         'No location recorded yet.',
     },
 }

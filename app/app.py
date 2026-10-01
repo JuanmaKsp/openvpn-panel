@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.2'
+APP_VERSION = '1.7.3'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -1000,12 +1000,14 @@ GEO_FILE = '/var/lib/ovpn-acl/clients_geo.json'
 
 def load_geo():
     """{name: {'history': [{'ip','ts','lat'?,'lon'?,'city'?,'country'?,
-    'country_code'?}, ...]}}, más reciente primero, como mucho 5 IPs
-    *distintas* por cliente (se deduplica y refresca en el poller, no
-    aquí) — lo escribe ovpn-acl-poller.service en el instante en que cada
-    cliente pasa a "conectado"; el panel solo lee. Una entrada sin lat/lon
-    = ip privada, o la base de datos GeoIP aún no se ha descargado, o esa
-    IP no tiene registro en ella."""
+    'country_code'?,'isp'?,'is_mobile'?}, ...]}}, más reciente primero,
+    como mucho 5 IPs *distintas* por cliente (se deduplica y refresca en
+    el poller, no aquí) — lo escribe ovpn-acl-poller.service en el
+    instante en que cada cliente pasa a "conectado"; el panel solo lee.
+    Una entrada sin lat/lon = ip privada, o la base de datos GeoIP aún no
+    se ha descargado, o esa IP no tiene registro en ella. 'isp'/'is_mobile'
+    vienen de una segunda base de datos (ASN), independiente de la de
+    ciudad, así que pueden faltar aunque sí haya lat/lon (o viceversa)."""
     try:
         with open(GEO_FILE) as f:
             return json.load(f)
