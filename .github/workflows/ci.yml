@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Byte-compile every Python file
+        run: |
+          python -m py_compile app/app.py app/translations.py
+          python -m py_compile usr/lib/openvpn-manager/acl-poller.py
+          python -m py_compile usr/lib/openvpn-manager/update-geoip.py
+          python -m py_compile usr/lib/openvpn-manager/setup-menu.py
+          python -m py_compile usr/lib/openvpn-manager/remove-menu.py
+      - name: Check shell syntax of installer scripts
+        run: |
+          for f in packaging/debian10/DEBIAN/{postinst,prerm,postrm} \
+                   packaging/debian11-13/DEBIAN/{postinst,prerm,postrm}; do
+            bash -n "$f"
+          done
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+      - name: Run tests
+        run: pytest tests/ -v
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build both .deb packages
+        run: ./scripts/build.sh all
+      - name: Verify package metadata
+        run: |
+          for deb in dist/*.deb; do
+            echo "== $deb =="
+            dpkg-deb -I "$deb"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages
+          path: dist/*.deb
