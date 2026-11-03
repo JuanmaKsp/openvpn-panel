@@ -37,6 +37,16 @@ jobs:
           python-version: '3.11'
       - name: Install test dependencies
         run: pip install -r requirements-test.txt
+      - name: Prepare the production paths app.py expects
+        # app.py hardcodes absolute system paths and touches some of them
+        # at import time (see tests/conftest.py). The GitHub-hosted runner
+        # doesn't run as root, so these need sudo -- same as a real
+        # install, where postinst (which does run as root) creates them.
+        run: |
+          sudo mkdir -p /var/www/openvpn/app
+          sudo chown -R "$(whoami)" /var/www/openvpn
+          sudo touch /var/log/openvpn-gui.log
+          sudo chown "$(whoami)" /var/log/openvpn-gui.log
       - name: Run tests
         run: pytest tests/ -v
 
