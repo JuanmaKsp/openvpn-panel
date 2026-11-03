@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="{{ lang() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenVPN Manager – IP fija</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+    header {
+      background: #1a2332; color: #fff; padding: 0 24px; min-height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    }
+    header .brand { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .gpinfor-link {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: #6b8aad; text-decoration: none; line-height: 1;
+    }
+    .gpinfor-link:hover { color: #aac4e0; }
+    header .user-area { font-size: 13px; color: #aac4e0; display: flex; align-items: center; gap: 14px; }
+    header .user-area a {
+      color: #aac4e0; text-decoration: none; padding: 4px 10px;
+      border: 1px solid #3a5068; border-radius: 4px; transition: background .2s;
+    }
+    header .user-area a:hover { background: #253445; color: #fff; }
+    .lang-switch { display: flex; gap: 4px; }
+    .lang-switch a { padding: 3px 8px; font-size: 11px; }
+    .lang-switch a.active { background: #2980b9; border-color: #2980b9; color: #fff; }
+
+    .nav-tabs {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px;
+      display: flex; gap: 4px; border-bottom: 2px solid #dee2e6;
+    }
+    .nav-tab {
+      padding: 10px 20px; font-size: 13px; font-weight: 600; color: #6c757d;
+      text-decoration: none; border: 1px solid transparent;
+      border-bottom: none; border-radius: 6px 6px 0 0;
+      background: transparent; cursor: pointer; margin-bottom: -2px;
+      transition: color .15s, background .15s;
+    }
+    .nav-tab:hover { color: #2980b9; background: #f0f4f8; }
+    .nav-tab.active {
+      color: #1a2332; background: #fff;
+      border-color: #dee2e6; border-bottom-color: #fff;
+    }
+
+    main { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+    .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    .flash.success { background: #eafaf1; border: 1px solid #27ae60; color: #1e8449; }
+    .flash.error   { background: #fdecea; border: 1px solid #e74c3c; color: #c0392b; }
+    .flash.info    { background: #eaf4ff; border: 1px solid #2980b9; color: #1a5276; }
+
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; overflow: hidden; }
+    .card-header {
+      padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid #e9ecef;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h2 { font-size: 15px; font-weight: 600; color: #444; }
+    .card-body { padding: 20px; }
+
+    .btn {
+      display: inline-block; padding: 7px 14px; border: none; border-radius: 5px;
+      font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary   { background: #2980b9; color: #fff; }
+    .btn-danger    { background: #e74c3c; color: #fff; }
+    .btn-secondary { background: #95a5a6; color: #fff; }
+    .btn-warning   { background: #e67e22; color: #fff; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 5px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+      border-radius: 5px; font-size: 13px; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #2980b9; }
+    .hint { font-size: 12px; color: #888; margin-top: 6px; line-height: 1.5; }
+    .optional { font-weight: 400; text-transform: none; letter-spacing: 0; color: #999; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #f8f9fa; text-align: left; padding: 10px 12px;
+      font-size: 11px; font-weight: 700; color: #666;
+      text-transform: uppercase; letter-spacing: .5px; border-bottom: 2px solid #e9ecef;
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block; padding: 3px 9px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .badge-ip { background: #eaf2ff; color: #2c5ea8; font-family: monospace; letter-spacing: 0; text-transform: none; }
+    .badge-none { background: #f0f0f0; color: #999; }
+
+    .empty { text-align: center; padding: 40px 20px; color: #aaa; }
+    .empty p { margin-top: 8px; font-size: 14px; }
+    .table-scroll { overflow-x: auto; }
+    .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+
+    .reason-text { color: #555; }
+    .reason-empty { color: #ccc; font-size: 12px; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 999;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 8px; padding: 28px; width: 480px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.25); max-height: 90vh; overflow-y: auto;
+    }
+    .modal-box h3 { font-size: 16px; color: #333; margin-bottom: 6px; }
+    .modal-box .subtitle { font-size: 13px; color: #888; margin-bottom: 18px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal-divider { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+
+    .mode-choice { display: flex; gap: 16px; margin-bottom: 14px; }
+    .mode-choice label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #444; cursor: pointer; }
+    .mode-choice input { width: auto; }
+
+    @media (max-width: 700px) {
+      main { padding: 0 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>&#128274; OpenVPN Manager</h1>
+    <a href="https://gpinfor.com/" target="_blank" rel="noopener" class="gpinfor-link">gpinfor.com · v{{ app_version }}</a>
+  </div>
+  <div class="user-area">
+    <div class="lang-switch">
+      <a href="/lang/en?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'en' }}">EN</a>
+      <a href="/lang/es?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'es' }}">ES</a>
+    </div>
+    <span>{{ user }}</span>
+    <a href="/logout">{{ t('nav.logout') }}</a>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <a class="nav-tab" href="/">&#128101; {{ t('nav.clients') }}</a>
+  <a class="nav-tab" href="/access-ranges">&#127760; {{ t('nav.ranges') }}</a>
+  <a class="nav-tab active" href="/staticip">&#128204; {{ t('nav.staticip') }}</a>
+  <a class="nav-tab" href="/map">&#128506; {{ t('nav.map') }}</a>
+  {% if user == 'root' %}<a class="nav-tab" href="/admin/users">&#128272; {{ t('nav.admin') }}</a>{% endif %}
+  <a class="nav-tab" href="/logs">&#128203; {{ t('nav.logs') }}</a>
+  <a class="nav-tab" href="/help">&#10067; {{ t('nav.help') }}</a>
+</nav>
+
+<main>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ t('sip.card_title') }}</h2>
+    </div>
+    <div class="card-body">
+      {% if static_net %}
+      <p class="hint" style="margin-top:0">
+        {{ t('sip.range_prefix') }} <strong style="font-family:monospace">{{ static_net }}</strong>
+        {{ t('sip.range_suffix') }}
+      </p>
+      {% else %}
+      <p class="hint" style="margin-top:0;color:#c0392b">
+        {{ t('sip.range_error') | safe }}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ t('sip.clients_title', assigned=assigned_count, total=(clients | length)) }}</h2>
+    </div>
+    {% if clients %}
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t('sip.th_name') }}</th>
+          <th>{{ t('sip.th_staticip') }}</th>
+          <th>{{ t('sip.th_reason') }}</th>
+          <th>{{ t('sip.th_actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr>
+          <td><strong>{{ c.name }}</strong></td>
+          <td>
+            {% if c.static_ip %}
+              <span class="badge badge-ip">{{ c.static_ip }}</span>
+            {% else %}
+              <span class="badge badge-none">{{ t('sip.unassigned_badge') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.static_ip_reason %}
+              <span class="reason-text">{{ c.static_ip_reason }}</span>
+            {% elif c.static_ip %}
+              <span class="reason-empty">{{ t('sip.no_reason') }}</span>
+            {% else %}
+              <span class="reason-empty">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              {% if c.static_ip %}
+              <form method="POST" action="/staticip/release/{{ c.name }}"
+                    onsubmit='return confirm({{ t("sip.release_confirm", name=c.name, ip=c.static_ip) | tojson }})'>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-secondary btn-sm">&#10006; {{ t('sip.release_btn') }}</button>
+              </form>
+              {% else %}
+              <button type="button" class="btn btn-warning btn-sm"
+                      onclick='openAssignModal({{ c.name | tojson }})'>&#128204; {{ t('sip.assign_btn') }}</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div style="font-size:40px">&#128204;</div>
+      <p>{{ t('sip.no_clients') }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+</main>
+
+<!-- Modal: asignar IP fija -->
+<div class="modal-overlay" id="assignModal">
+  <div class="modal-box">
+    <h3>&#128204; {{ t('sip.modal_title') }}</h3>
+    <p class="subtitle">{{ t('sip.modal_client') }} <strong id="assignClientName"></strong></p>
+    <form method="POST" id="assignForm">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="mode" id="assignMode" value="auto">
+
+      <div class="mode-choice">
+        <label><input type="radio" name="mode_radio" value="auto" checked onchange="setAssignMode('auto')"> {{ t('sip.mode_auto') }}</label>
+        <label><input type="radio" name="mode_radio" value="manual" onchange="setAssignMode('manual')"> {{ t('sip.mode_manual') }}</label>
+      </div>
+
+      <div class="form-group" id="manualIpGroup" style="display:none; margin-bottom:12px">
+        <label for="manual_ip">{{ t('sip.desired_ip_label') }} <span class="optional">{{ t('sip.desired_ip_optional') }}</span></label>
+        <input type="text" id="manual_ip" name="manual_ip" placeholder="ej: {{ static_net.split('/')[0][:-1] if static_net else '10.0.0.' }}6">
+        <div class="hint">{{ t('sip.desired_ip_hint', net=(static_net or t('sip.range_fallback'))) }}</div>
+      </div>
+
+      <hr class="modal-divider">
+
+      <div class="form-group">
+        <label for="reason">{{ t('sip.reason_label') }} <span style="color:#e74c3c">*</span></label>
+        <textarea id="reason" name="reason" rows="3" maxlength="200" required
+                  placeholder="{{ t('sip.reason_placeholder') }}"></textarea>
+        <div class="hint">{{ t('sip.reason_hint') }}</div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-warning">{{ t('sip.confirm_assign_btn') }}</button>
+        <button type="button" class="btn btn-secondary" onclick="closeAssignModal()">{{ t('idx.cancel_btn') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openAssignModal(name) {
+    document.getElementById('assignClientName').textContent = name;
+    document.getElementById('assignForm').action = '/staticip/assign/' + encodeURIComponent(name);
+    document.getElementById('reason').value = '';
+    document.getElementById('manual_ip').value = '';
+    setAssignMode('auto');
+    document.querySelector('input[name="mode_radio"][value="auto"]').checked = true;
+    document.getElementById('assignModal').classList.add('open');
+  }
+  function closeAssignModal() {
+    document.getElementById('assignModal').classList.remove('open');
+  }
+  function setAssignMode(mode) {
+    document.getElementById('assignMode').value = mode;
+    document.getElementById('manualIpGroup').style.display = (mode === 'manual') ? 'block' : 'none';
+    document.getElementById('manual_ip').required = (mode === 'manual');
+  }
+  document.getElementById('assignModal').addEventListener('click', function(e) {
+    if (e.target === this) closeAssignModal();
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="{{ lang() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenVPN Manager</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+    header {
+      background: #1a2332; color: #fff; padding: 0 24px; min-height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    }
+    header .brand { display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .gpinfor-link {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: #6b8aad; text-decoration: none; line-height: 1;
+    }
+    .gpinfor-link:hover { color: #aac4e0; }
+
+    header .user-area { font-size: 13px; color: #aac4e0; display: flex; align-items: center; gap: 14px; }
+    header .user-area a {
+      color: #aac4e0; text-decoration: none; padding: 4px 10px;
+      border: 1px solid #3a5068; border-radius: 4px; transition: background .2s;
+    }
+    header .user-area a:hover { background: #253445; color: #fff; }
+    .lang-switch { display: flex; gap: 4px; }
+    .lang-switch a { padding: 3px 8px; font-size: 11px; }
+    .lang-switch a.active { background: #2980b9; border-color: #2980b9; color: #fff; }
+
+    .nav-tabs {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px;
+      display: flex; gap: 4px; border-bottom: 2px solid #dee2e6;
+      background: transparent;
+    }
+    .nav-tab {
+      padding: 10px 20px; font-size: 13px; font-weight: 600; color: #6c757d;
+      text-decoration: none; border: 1px solid transparent;
+      border-bottom: none; border-radius: 6px 6px 0 0;
+      background: transparent; cursor: pointer; margin-bottom: -2px;
+      transition: color .15s, background .15s;
+    }
+    .nav-tab:hover { color: #2980b9; background: #f0f4f8; }
+    .nav-tab.active {
+      color: #1a2332; background: #fff;
+      border-color: #dee2e6; border-bottom-color: #fff;
+    }
+
+    main { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+    .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    .flash.success { background: #eafaf1; border: 1px solid #27ae60; color: #1e8449; }
+    .flash.error   { background: #fdecea; border: 1px solid #e74c3c; color: #c0392b; }
+    .flash.info    { background: #eaf4ff; border: 1px solid #2980b9; color: #1a5276; }
+
+    .stats { display: flex; gap: 14px; margin-bottom: 20px; }
+    .stat-card {
+      background: #fff; border-radius: 8px; padding: 14px 20px; flex: 1;
+      text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .stat-card .num { font-size: 28px; font-weight: 700; }
+    .stat-card .lbl { font-size: 12px; color: #888; margin-top: 2px; }
+    .stat-card.active .num  { color: #27ae60; }
+    .stat-card.revoked .num { color: #e74c3c; }
+    .stat-card.expired .num { color: #e67e22; }
+
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; overflow: hidden; }
+    .card-header {
+      padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid #e9ecef;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h2 { font-size: 15px; font-weight: 600; color: #444; }
+    .card-body { padding: 20px; }
+
+    .btn {
+      display: inline-block; padding: 7px 14px; border: none; border-radius: 5px;
+      font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary   { background: #2980b9; color: #fff; }
+    .btn-success   { background: #27ae60; color: #fff; }
+    .btn-danger    { background: #e74c3c; color: #fff; }
+    .btn-warning   { background: #e67e22; color: #fff; }
+    .btn-secondary { background: #95a5a6; color: #fff; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* Create form */
+    .create-form { display: none; }
+    .create-form.open { display: block; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 120px; gap: 12px; align-items: end; }
+    .form-grid-wide { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 5px; }
+    .form-group label .optional { font-weight: 400; color: #aaa; margin-left: 4px; }
+    .form-group input, .form-group textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+      border-radius: 5px; font-size: 13px; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #2980b9; }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .pw-wrap { position: relative; }
+    .pw-wrap input { padding-right: 34px !important; }
+    .pw-toggle {
+      position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; font-size: 15px;
+      color: #888; padding: 4px 6px; line-height: 1;
+    }
+    .pw-toggle:hover { color: #444; }
+    .form-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #f8f9fa; text-align: left; padding: 10px 12px;
+      font-size: 11px; font-weight: 700; color: #666;
+      text-transform: uppercase; letter-spacing: .5px; border-bottom: 2px solid #e9ecef;
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr.revoked { opacity: .6; }
+    tr.expired td:nth-child(4) { color: #e67e22; font-weight: 600; }
+    tr.expiring-soon { background: #fff8f0; }
+    tr.expiring-soon td:nth-child(5) { color: #c0620a; font-weight: 700; }
+
+    .badge {
+      display: inline-block; padding: 3px 9px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .badge-active  { background: #eafaf1; color: #1e8449; }
+    .badge-revoked { background: #fdecea; color: #c0392b; }
+    .badge-expired { background: #fef5e4; color: #d68910; }
+
+    .icon-lock { color: #e67e22; font-size: 13px; margin-left: 4px; }
+    .ip-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ip-tag {
+      background: #eaf4ff; color: #2471a3; border: 1px solid #aed6f1;
+      border-radius: 10px; padding: 2px 8px; font-size: 11px; white-space: nowrap;
+    }
+
+    .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 999;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 8px; padding: 28px; width: 480px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.25); max-height: 90vh; overflow-y: auto;
+    }
+    .modal-box h3 { font-size: 16px; color: #333; margin-bottom: 6px; }
+    .modal-box .subtitle { font-size: 13px; color: #888; margin-bottom: 18px; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal-divider { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+
+    .empty { text-align: center; padding: 40px 20px; color: #aaa; }
+    .empty p { margin-top: 8px; font-size: 14px; }
+
+    .conn-dot {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; margin-right: 5px; vertical-align: middle;
+    }
+    .conn-dot.on  { background: #27ae60; box-shadow: 0 0 5px #27ae6088; }
+    .conn-dot.off { background: #ccc; }
+
+    .badge-blocked { background: #f0e6ff; color: #7d3c98; }
+    .maintenance-bar {
+      background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;
+      padding: 12px 20px; margin-bottom: 20px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .maintenance-bar .maint-text { font-size: 14px; font-weight: 600; color: #856404; }
+    .maintenance-bar .maint-text span { font-size: 13px; font-weight: 400; margin-left: 8px; color: #a07800; }
+
+    /* Tooltips */
+    #_tooltip {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: #1a2332; color: #fff; font-size: 11px;
+      padding: 5px 10px; border-radius: 5px; white-space: nowrap;
+      line-height: 1.4; opacity: 0; transition: opacity .15s;
+      max-width: 260px; white-space: normal; text-align: center;
+    }
+
+    .table-scroll { overflow-x: auto; }
+
+    /* Responsive: pantallas pequeñas */
+    @media (max-width: 700px) {
+      .stats { flex-wrap: wrap; }
+      .stat-card { flex: 1 1 40%; }
+      .form-grid, .form-grid-wide { grid-template-columns: 1fr; }
+      main { padding: 0 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>&#128274; OpenVPN Manager</h1>
+    <a href="https://gpinfor.com/" target="_blank" rel="noopener" class="gpinfor-link">gpinfor.com · v{{ app_version }}</a>
+  </div>
+  <div class="user-area">
+    <div class="lang-switch">
+      <a href="/lang/en?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'en' }}">EN</a>
+      <a href="/lang/es?next={{ request.path | urlencode }}" class="{{ 'active' if lang() == 'es' }}">ES</a>
+    </div>
+    <span>{{ user }}</span>
+    <a href="/logout">{{ t('nav.logout') }}</a>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <a class="nav-tab active" href="/">&#128101; {{ t('nav.clients') }}</a>
+  <a class="nav-tab" href="/access-ranges">&#127760; {{ t('nav.ranges') }}</a>
+  <a class="nav-tab" href="/staticip">&#128204; {{ t('nav.staticip') }}</a>
+  <a class="nav-tab" href="/map">&#128506; {{ t('nav.map') }}</a>
+  {% if user == 'root' %}<a class="nav-tab" href="/admin/users">&#128272; {{ t('nav.admin') }}</a>{% endif %}
+  <a class="nav-tab" href="/logs">&#128203; {{ t('nav.logs') }}</a>
+  <a class="nav-tab" href="/help">&#10067; {{ t('nav.help') }}</a>
+</nav>
+
+<div id="_tooltip"></div>
+<main>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Barra de mantenimiento -->
+  {% if maintenance %}
+  <div class="maintenance-bar">
+    <div class="maint-text">&#9888; {{ t('idx.maintenance_active') }}<span>{{ t('idx.maintenance_count', n=maintenance_blocked_count) }}</span></div>
+    <form method="POST" action="/maintenance/off">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-success btn-sm"
+              data-tip="{{ t('idx.maintenance_off_tip') }}">&#10003; {{ t('idx.maintenance_off_btn') }}</button>
+    </form>
+  </div>
+  {% else %}
+  <div style="text-align:right; margin-bottom:12px;">
+    <button class="btn btn-warning btn-sm" onclick="openMaintenanceModal()"
+            data-tip="{{ t('idx.maintenance_on_tip') }}">&#9888; {{ t('idx.maintenance_on_btn') }}</button>
+  </div>
+  {% endif %}
+
+  <!-- Stats -->
+  {% set active_count  = clients | selectattr('status','eq','activo')   | selectattr('expired','eq',false) | list | length %}
+  {% set expired_count = clients | selectattr('status','eq','activo')   | selectattr('expired','eq',true)  | list | length %}
+  {% set revoked_count = clients | selectattr('status','eq','revocado') | list | length %}
+  <div class="stats">
+    <div class="stat-card active">
+      <div class="num">{{ active_count }}</div>
+      <div class="lbl">{{ t('idx.stat_active') }}</div>
+    </div>
+    <div class="stat-card expired">
+      <div class="num">{{ expired_count }}</div>
+      <div class="lbl">{{ t('idx.stat_expired') }}</div>
+    </div>
+    <div class="stat-card revoked">
+      <div class="num">{{ revoked_count }}</div>
+      <div class="lbl">{{ t('idx.stat_revoked') }}</div>
+    </div>
+  </div>
+
+  <!-- Create form -->
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ t('idx.new_client_title') }}</h2>
+      <button class="btn btn-success btn-sm" onclick="toggleCreate()"
+              data-tip="{{ t('idx.new_client_tip') }}">{{ t('idx.add_client_btn') }}</button>
+    </div>
+    <div class="card-body create-form" id="createForm">
+      <form method="POST" action="/create">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="f_name">{{ t('idx.f_name_label') }}</label>
+            <input type="text" id="f_name" name="name" placeholder="{{ t('idx.f_name_placeholder') }}"
+                   pattern="[a-zA-Z0-9_\-]+" required>
+          </div>
+          <div class="form-group">
+            <label for="f_email">{{ t('idx.f_email_label') }}</label>
+            <input type="email" id="f_email" name="email" placeholder="{{ t('idx.email_placeholder') }}" required>
+          </div>
+          <div class="form-group">
+            <label for="f_months">{{ t('idx.f_months_label') }}</label>
+            <input type="number" id="f_months" name="months"
+                   value="{{ default_months }}" min="1" max="1200" required>
+          </div>
+          <div class="form-group">
+            <label for="f_months" style="visibility:hidden">.</label>
+            <div class="hint" style="margin-top:8px">≈ <span id="daysPreview">{{ default_months * 30 }}</span> {{ t('idx.days_suffix') }}</div>
+          </div>
+        </div>
+        <div class="form-grid-wide">
+          <div class="form-group">
+            <label for="f_pass">{{ t('idx.f_pass_label') }} <span class="optional">{{ t('idx.optional') }}</span></label>
+            <div class="pw-wrap">
+              <input type="password" id="f_pass" name="key_password"
+                     placeholder="{{ t('idx.f_pass_placeholder') }}" autocomplete="new-password">
+              <button type="button" class="pw-toggle" tabindex="-1" onclick="togglePw('f_pass', this)">&#128065;</button>
+            </div>
+            <div class="hint">{{ t('idx.f_pass_hint') }}</div>
+          </div>
+          <div class="form-group">
+            <label for="f_ranges">{{ t('idx.f_ranges_label') }} <span class="optional">{{ t('idx.f_ranges_optional') }}</span></label>
+            <textarea id="f_ranges" name="ip_ranges"
+                      placeholder="{{ t('idx.ranges_placeholder') }}"></textarea>
+            <div class="hint">{{ t('idx.f_ranges_hint') }}</div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">{{ t('idx.create_btn') }}</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleCreate()">{{ t('idx.cancel_btn') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Clients table -->
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ t('idx.clients_table_title') }}</h2>
+      {% if revoked_count > 0 %}
+      <button class="btn btn-secondary btn-sm" id="toggleRevoked" onclick="toggleRevoked()">
+        {{ t('idx.show_revoked', n=revoked_count) }}
+      </button>
+      {% endif %}
+    </div>
+    {% if clients %}
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t('idx.th_name') }}</th>
+          <th>{{ t('idx.th_email') }}</th>
+          <th>{{ t('idx.th_connection') }}</th>
+          <th>{{ t('idx.th_status') }}</th>
+          <th>{{ t('idx.th_expiry') }}</th>
+          <th>{{ t('idx.th_ranges') }}</th>
+          <th>{{ t('idx.th_actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        {% set row_class = 'revoked' if c.status == 'revocado' else ('expired' if c.expired else ('expiring-soon' if c.expiring_soon else '')) %}
+        <tr class="{{ row_class }}" data-name="{{ c.name }}">
+          <td>
+            <strong>{{ c.name }}</strong>
+            {% if c.password_protected %}
+              <span class="icon-lock" title="{{ t('idx.pw_protected_tip') }}">&#128272;</span>
+            {% endif %}
+          </td>
+          <td>{{ c.email or '—' }}</td>
+          <td class="conn-cell">
+            {% if c.status == 'revocado' %}
+              <span style="color:#ccc;font-size:12px">—</span>
+            {% elif c.connected %}
+              <span class="conn-dot on"></span><span style="color:#27ae60;font-size:12px;font-weight:600">{{ t('idx.connected') }}</span>
+            {% else %}
+              <span class="conn-dot off"></span><span style="color:#aaa;font-size:12px">{{ t('idx.disconnected') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.status == 'revocado' %}
+              <span class="badge badge-revoked">{{ t('idx.status_revoked') }}</span>
+            {% elif c.expired %}
+              <span class="badge badge-expired">{{ t('idx.status_expired') }}</span>
+            {% else %}
+              <span class="badge badge-active">{{ t('idx.status_active') }}</span>
+            {% endif %}
+            {% if c.blocked %}
+              <span class="badge badge-blocked" style="margin-left:4px">&#128274; {{ t('idx.blocked_badge') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {{ c.expiry }}
+            {% if c.expiring_soon %}
+              <span style="margin-left:5px" data-tip="{{ t('idx.expiring_soon_tip') }}">&#9888;</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.ip_ranges %}
+              <div class="ip-tags">
+                {% for r in c.ip_ranges %}
+                  <span class="ip-tag">{{ r }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span style="color:#ccc;font-size:12px">{{ t('idx.no_restriction') }}</span>
+            {% endif %}
+            {% if c.static_ip %}
+              <div style="margin-top:4px">
+                <span class="ip-tag" style="background:#eaf2ff;color:#2c5ea8"
+                      data-tip="{{ t('idx.static_ip_tip') }}">
+                  &#128204; {{ c.static_ip }}
+                </span>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              {% if c.status != 'revocado' %}
+                <a href="/download/{{ c.name }}" class="btn btn-primary btn-sm"
+                   data-tip="{{ t('idx.download_tip') }}">&#11123; {{ t('idx.download_btn') }}</a>
+                <button class="btn btn-warning btn-sm"
+                        data-tip="{{ t('idx.renew_tip') }}"
+                        onclick='openRenewModal({{ c.name | tojson }}, {{ default_months }}, {{ c.ip_ranges | tojson }}, {{ c.email | tojson }})'>
+                  &#8635; {{ t('idx.renew_btn') }}
+                </button>
+                <form method="POST" action="/disconnect/{{ c.name }}" class="disconnect-form"
+                      style="display:{{ 'inline' if c.connected else 'none' }}"
+                      onsubmit='return confirm({{ t('idx.disconnect_confirm', name=c.name) | tojson }})'>
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-secondary btn-sm"
+                          data-tip="{{ t('idx.disconnect_tip') }}">&#9099; {{ t('idx.disconnect_btn') }}</button>
+                </form>
+                {% if c.blocked %}
+                <form method="POST" action="/unblock/{{ c.name }}">
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-success btn-sm"
+                          data-tip="{{ t('idx.unblock_tip') }}">&#128275; {{ t('idx.unblock_btn') }}</button>
+                </form>
+                {% else %}
+                <form method="POST" action="/block/{{ c.name }}"
+                      onsubmit='return confirm({{ t('idx.block_confirm', name=c.name) | tojson }})'>
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-secondary btn-sm" style="background:#7d3c98"
+                          data-tip="{{ t('idx.block_tip') }}">&#128274; {{ t('idx.block_btn') }}</button>
+                </form>
+                {% endif %}
+                <form method="POST" action="/revoke/{{ c.name }}"
+                      onsubmit='return confirm({{ t('idx.revoke_confirm', name=c.name) | tojson }})'>
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-danger btn-sm"
+                          data-tip="{{ t('idx.revoke_tip') }}">&#10006; {{ t('idx.revoke_btn') }}</button>
+                </form>
+              {% else %}
+                <span style="color:#ccc;font-size:12px">—</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div style="font-size:40px">&#128274;</div>
+      <p>{{ t('idx.no_clients') }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+</main>
+
+<!-- Renew Modal -->
+<div class="modal-overlay" id="renewModal">
+  <div class="modal-box">
+    <h3>&#8635; {{ t('idx.renew_modal_title') }}</h3>
+    <p class="subtitle">{{ t('idx.renew_modal_client') }} <strong id="renewClientName"></strong></p>
+    <form method="POST" id="renewForm">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <!-- Email: oculto si ya se conoce, visible y requerido si es cliente CLI -->
+      <div class="form-group" id="rEmailGroup" style="display:none; margin-bottom:12px">
+        <label for="rEmail">{{ t('idx.f_email_label') }} <span style="color:#e74c3c">*</span> <span class="optional">{{ t('idx.renew_email_required') }}</span></label>
+        <input type="email" id="rEmail" name="email" placeholder="{{ t('idx.email_placeholder') }}">
+      </div>
+      <input type="hidden" id="rEmailHidden" name="email" value="">
+      <div class="modal-grid">
+        <div class="form-group">
+          <label for="rMonths">{{ t('idx.renew_months_label') }}</label>
+          <input type="number" id="rMonths" name="months" min="1" max="1200" required>
+          <div class="hint">≈ <span id="rDaysPreview">0</span> {{ t('idx.days_suffix') }}</div>
+        </div>
+        <div class="form-group">
+          <label for="rPass">{{ t('idx.renew_pass_label') }} <span class="optional">{{ t('idx.optional') }}</span></label>
+          <div class="pw-wrap">
+            <input type="password" id="rPass" name="key_password"
+                   placeholder="{{ t('idx.renew_pass_placeholder') }}" autocomplete="new-password">
+            <button type="button" class="pw-toggle" tabindex="-1" onclick="togglePw('rPass', this)">&#128065;</button>
+          </div>
+        </div>
+      </div>
+      <hr class="modal-divider">
+      <div class="form-group">
+        <label for="rRanges">{{ t('idx.f_ranges_label') }} <span class="optional">{{ t('idx.renew_ranges_optional') }}</span></label>
+        <textarea id="rRanges" name="ip_ranges" style="min-height:70px"
+                  placeholder="{{ t('idx.ranges_placeholder') }}"></textarea>
+        <div class="hint">{{ t('idx.renew_ranges_hint') }}</div>
+      </div>
+      <p style="font-size:12px;color:#e74c3c;margin-top:10px">
+        {{ t('idx.renew_warning') }}
+      </p>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-warning">{{ t('idx.confirm_renew_btn') }}</button>
+        <button type="button" class="btn btn-secondary" onclick="closeRenewModal()">{{ t('idx.cancel_btn') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal modo mantenimiento -->
+<div class="modal-overlay" id="maintenanceModal">
+  <div class="modal-box" style="width:520px">
+    <h3>&#9888; {{ t('idx.maint_modal_title') }}</h3>
+    <p class="subtitle">{{ t('idx.maint_modal_subtitle') }}</p>
+    <form method="POST" action="/maintenance/on">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div style="max-height:280px;overflow-y:auto;border:1px solid #eee;border-radius:6px;padding:10px;">
+        {% for c in clients %}
+        {% if c.status != 'revocado' %}
+        <label style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-radius:4px;cursor:pointer;font-size:13px"
+               onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">
+          <input type="checkbox" name="protected" value="{{ c.name }}" style="width:16px;height:16px">
+          <span><strong>{{ c.name }}</strong>
+            {% if c.connected %}<span style="color:#27ae60;font-size:11px"> &#9679; {{ t('idx.maint_connected_badge') }}</span>{% endif %}
+            {% if c.blocked %}<span style="color:#7d3c98;font-size:11px"> &#128274; {{ t('idx.maint_already_blocked') }}</span>{% endif %}
+          </span>
+        </label>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <p style="font-size:12px;color:#e67e22;margin-top:10px">&#9888; {{ t('idx.maint_warning') }}</p>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-warning"
+                data-tip="{{ t('idx.maint_activate_tip') }}"
+                onclick='return confirm({{ t("idx.maint_activate_confirm") | tojson }})'>
+          &#9888; {{ t('idx.maint_activate_btn') }}
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeMaintenanceModal()">{{ t('idx.cancel_btn') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Textos traducidos que hacen falta desde JS (el resto ya llega
+  // traducido desde el propio HTML)
+  var I18N = {
+    pwShow:        {{ t('pw.show') | tojson }},
+    pwHide:         {{ t('pw.hide') | tojson }},
+    connected:      {{ t('idx.connected') | tojson }},
+    disconnected:   {{ t('idx.disconnected') | tojson }},
+    showRevoked:    {{ t('idx.show_revoked', n=revoked_count) | tojson }},
+    hideRevoked:    {{ t('idx.hide_revoked', n=revoked_count) | tojson }}
+  };
+
+  // Preview días en formulario de creación
+  document.getElementById('f_months').addEventListener('input', function() {
+    document.getElementById('daysPreview').textContent = this.value * 30;
+  });
+
+  // Preview días en modal de renovación
+  document.getElementById('rMonths').addEventListener('input', function() {
+    document.getElementById('rDaysPreview').textContent = this.value * 30;
+  });
+
+  function toggleCreate() {
+    document.getElementById('createForm').classList.toggle('open');
+  }
+
+  function togglePw(id, btn) {
+    var el = document.getElementById(id);
+    if (el.type === 'password') {
+      el.type = 'text';
+      btn.innerHTML = '&#128584;';   // 🙈 — clic para ocultar
+      btn.setAttribute('aria-label', I18N.pwHide);
+    } else {
+      el.type = 'password';
+      btn.innerHTML = '&#128065;';   // 👁 — clic para mostrar
+      btn.setAttribute('aria-label', I18N.pwShow);
+    }
+  }
+
+  function openRenewModal(name, defaultMonths, currentRanges, knownEmail) {
+    document.getElementById('renewClientName').textContent = name;
+    document.getElementById('rMonths').value = defaultMonths;
+    document.getElementById('rDaysPreview').textContent = defaultMonths * 30;
+    document.getElementById('rRanges').value = (currentRanges || []).join('\n');
+    document.getElementById('renewForm').action = '/renew/' + encodeURIComponent(name);
+
+    // Si no hay email conocido, mostrar campo editable; si lo hay, enviarlo oculto
+    var emailGroup  = document.getElementById('rEmailGroup');
+    var emailField  = document.getElementById('rEmail');
+    var emailHidden = document.getElementById('rEmailHidden');
+    if (!knownEmail) {
+      emailGroup.style.display = 'block';
+      emailField.required = true;
+      emailField.name = 'email';    // restaurar por si un renew previo lo vació
+      emailHidden.name = '';        // deshabilitar el hidden
+    } else {
+      emailGroup.style.display = 'none';
+      emailField.required = false;
+      emailField.name = '';         // evitar que el campo oculto duplique el name="email"
+      emailHidden.name  = 'email';  // enviar el conocido como hidden
+      emailHidden.value = knownEmail;
+    }
+
+    document.getElementById('renewModal').classList.add('open');
+  }
+
+  function closeRenewModal() {
+    document.getElementById('renewModal').classList.remove('open');
+  }
+
+  document.getElementById('renewModal').addEventListener('click', function(e) {
+    if (e.target === this) closeRenewModal();
+  });
+
+  // Tooltip dinámico — el div #_tooltip debe estar en el DOM antes de este script
+  var _tip = document.getElementById('_tooltip');
+  document.querySelectorAll('[data-tip]').forEach(function(el) {
+    el.addEventListener('mouseenter', function() {
+      _tip.textContent = el.getAttribute('data-tip');
+      // Posicionar fuera de pantalla para medir dimensiones reales sin parpadeo
+      _tip.style.left = '-9999px';
+      _tip.style.top  = '-9999px';
+      _tip.style.opacity = '1';
+      var r  = el.getBoundingClientRect();
+      var tw = _tip.offsetWidth;
+      var th = _tip.offsetHeight;
+      var left = r.left + r.width / 2 - tw / 2;
+      var top  = r.top - th - 8;
+      if (left < 6) left = 6;
+      if (left + tw > window.innerWidth - 6) left = window.innerWidth - tw - 6;
+      if (top < 6) top = r.bottom + 8;
+      _tip.style.left = left + 'px';
+      _tip.style.top  = top  + 'px';
+    });
+    el.addEventListener('mouseleave', function() { _tip.style.opacity = '0'; });
+  });
+
+  function openMaintenanceModal() {
+    document.getElementById('maintenanceModal').classList.add('open');
+  }
+  function closeMaintenanceModal() {
+    document.getElementById('maintenanceModal').classList.remove('open');
+  }
+  document.getElementById('maintenanceModal').addEventListener('click', function(e) {
+    if (e.target === this) closeMaintenanceModal();
+  });
+
+  // Auto-refresco de la columna "Conexión" sin recargar la página ni
+  // generar tráfico nuevo hacia OpenVPN: /api/connected lee de la propia
+  // cache que ya mantiene el servicio de rangos de acceso cada 2s, así
+  // que sondearlo aquí no añade ninguna consulta adicional a la interfaz
+  // de gestión. Se pausa si la pestaña no está visible.
+  function refreshConnections() {
+    if (document.hidden) return;
+    fetch('/api/connected', {credentials: 'same-origin'})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        var connectedSet = {};
+        data.connected.forEach(function(name) { connectedSet[name] = true; });
+        document.querySelectorAll('tr[data-name]').forEach(function(row) {
+          if (row.classList.contains('revoked')) return;   // "—" siempre, no cambia
+          var cell = row.querySelector('.conn-cell');
+          if (!cell) return;
+          var isConnected = !!connectedSet[row.getAttribute('data-name')];
+          cell.innerHTML = isConnected
+            ? '<span class="conn-dot on"></span><span style="color:#27ae60;font-size:12px;font-weight:600">' + I18N.connected + '</span>'
+            : '<span class="conn-dot off"></span><span style="color:#aaa;font-size:12px">' + I18N.disconnected + '</span>';
+          var form = row.querySelector('.disconnect-form');
+          if (form) form.style.display = isConnected ? 'inline' : 'none';
+        });
+      })
+      .catch(function() { /* fallo puntual de red: se reintenta en el siguiente ciclo */ });
+  }
+  setInterval(refreshConnections, 4000);
+
+  var _revokedHidden = true;
+  document.querySelectorAll('tr.revoked').forEach(function(row) { row.style.display = 'none'; });
+  function toggleRevoked() {
+    _revokedHidden = !_revokedHidden;
+    document.querySelectorAll('tr.revoked').forEach(function(row) {
+      row.style.display = _revokedHidden ? 'none' : '';
+    });
+    var btn = document.getElementById('toggleRevoked');
+    btn.textContent = _revokedHidden ? I18N.showRevoked : I18N.hideRevoked;
+  }
+</script>
+
+</body>
+</html>
