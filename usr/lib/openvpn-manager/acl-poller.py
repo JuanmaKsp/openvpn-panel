@@ -36,7 +36,10 @@ MGMT_PORT      = 7505
 META_FILE      = '/var/www/openvpn/clients_meta.json'
 CHAIN_NAME     = 'OVPN_ACL'
 IPTABLES_BIN   = '/usr/sbin/iptables-legacy'
-POLL_INTERVAL  = 2  # segundos
+POLL_INTERVAL  = 5  # segundos -- antes 2s; cada ciclo genera 4 lineas "MANAGEMENT: ..."
+                     # de ruido en el journal de openvpn@server (~170k lineas/dia a 2s),
+                     # que ahogaba el journal y los limites de escaneo del visor de logs
+                     # del panel (ver _JOURNAL_SCAN_MAX en app.py). A 5s el ruido baja ~60%.
 
 # Geolocalizacion de la ultima conexion (mapa en el panel). Se resuelve solo
 # en el instante en que un cliente pasa de "desconectado" a "conectado" (no
