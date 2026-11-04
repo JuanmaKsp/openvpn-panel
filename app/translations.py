@@ -227,6 +227,8 @@ TRANSLATIONS = {
         'log.tab_vpn':               'OpenVPN',
         'log.tab_audit_tip':         'Acciones realizadas desde este panel: logins, clientes creados, revocados, bloqueados…',
         'log.tab_audit':             'Auditoría Manager',
+        'log.tab_history_tip':       'Historial permanente de conexiones y desconexiones reales, independiente del journal de OpenVPN y de su retención',
+        'log.tab_history':           'Historial de conexiones',
         'log.quick_filter_label':    'Filtro rápido:',
         'log.filter_all_tip':        'Mostrar todas las líneas del log sin filtrar',
         'log.filter_all':            'Todos',
@@ -250,6 +252,7 @@ TRANSLATIONS = {
         'log.refresh_btn':           'Actualizar',
         'log.empty_vpn':             'No hay entradas en el log de OpenVPN',
         'log.empty_audit':           'No hay entradas en el log de auditoría',
+        'log.empty_history':         'Todavía no hay ningún evento real de conexión registrado',
         'log.empty_search_suffix':   ' que coincidan con "{search}"',
         'log.lines_shown':           '{n} línea(s) mostradas',
 
@@ -654,6 +657,8 @@ TRANSLATIONS = {
         'log.tab_vpn':               'OpenVPN',
         'log.tab_audit_tip':         'Actions taken from this panel: logins, clients created, revoked, blocked…',
         'log.tab_audit':             'Manager Audit',
+        'log.tab_history_tip':       'Permanent history of real connects/disconnects, independent of the OpenVPN journal and its retention',
+        'log.tab_history':           'Connection History',
         'log.quick_filter_label':    'Quick filter:',
         'log.filter_all_tip':        'Show every log line, unfiltered',
         'log.filter_all':            'All',
@@ -677,6 +682,7 @@ TRANSLATIONS = {
         'log.refresh_btn':           'Refresh',
         'log.empty_vpn':             'No entries in the OpenVPN log',
         'log.empty_audit':           'No entries in the audit log',
+        'log.empty_history':         'No real connection events recorded yet',
         'log.empty_search_suffix':   ' matching "{search}"',
         'log.lines_shown':           '{n} line(s) shown',
 

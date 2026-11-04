@@ -71,3 +71,30 @@ def test_raw_journal_mode_only_applies_to_vpn_tab(client, app_module, monkeypatc
     client.get('/logs?tab=audit&raw=1&n=200')
 
     assert called == []
+
+
+def test_history_tab_shows_permanent_connection_log(client, app_module, monkeypatch):
+    """Bug real reportado: la pestaña 'Historial de conexiones' (el fichero
+    permanente que escribe acl-poller.py, independiente de journald) nunca
+    se conecto a ningun sitio del panel -- se construyo el backend
+    (CONN_LOG_FILE) en acl-poller.py pero nadie en app.py lo leia."""
+    fake_history = [
+        '2026-11-04 20:04:16 CONNECT name=juan real_ip=80.58.0.33 vip=10.8.0.2',
+        '2026-11-04 20:05:01 DISCONNECT name=juan real_ip=80.58.0.33 vip=10.8.0.2',
+    ]
+    monkeypatch.setattr(app_module, '_read_conn_log', lambda n: fake_history)
+    login(client, app_module, pam_ok=True, monkeypatch=monkeypatch)
+
+    resp = client.get('/logs?tab=history&n=200')
+    html = resp.get_data(as_text=True)
+
+    assert 'CONNECT name=juan' in html
+    assert 'DISCONNECT name=juan' in html
+
+
+def test_app_and_acl_poller_agree_on_the_connections_log_path(app_module, acl_poller_module):
+    """app.py lee de LOG_CONN_FILE, acl-poller.py escribe en CONN_LOG_FILE --
+    si alguna vez se desincronizan, la pestaña 'Historial de conexiones'
+    se queda vacia en silencio (sin error visible) mientras el fichero
+    real crece en otra ruta."""
+    assert app_module.LOG_CONN_FILE == acl_poller_module.CONN_LOG_FILE

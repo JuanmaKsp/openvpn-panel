@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.9'
+APP_VERSION = '1.7.10'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -261,6 +261,16 @@ def audit_class(line):
         return 'log-info'
     if 'login' in l:
         return 'log-login'
+    return ''
+
+
+@app.template_filter('history_class')
+def history_class(line):
+    l = line.lower()
+    if 'disconnect' in l:  # comprobar antes: "disconnect" contiene "connect"
+        return 'log-disconnect'
+    if 'connect' in l:
+        return 'log-connected'
     return ''
 
 
@@ -1470,6 +1480,9 @@ def serve_profile(subpath):
 
 LOG_GUI_FILE    = '/var/log/openvpn-gui.log'
 LOG_OVPN_UNIT   = 'openvpn@server'
+LOG_CONN_FILE   = '/var/log/openvpn-manager/connections.log'  # ver CONN_LOG_FILE en
+                                                                # acl-poller.py -- debe
+                                                                # ser la misma ruta
 _LOG_LINE_LIMIT = 1000   # tope de lineas a MOSTRAR (lo que puede pedir n=)
 _LOG_FETCH_LIMIT = 5000  # tope de lineas REALES a leer cuando hay filtro activo --
                          # independiente de _LOG_LINE_LIMIT a proposito: si n se
@@ -1577,6 +1590,18 @@ def _read_gui_log(n):
         return []
 
 
+def _read_conn_log(n):
+    """Lee las últimas n líneas del historial PERMANENTE de conexiones
+    (acl-poller.py, ver CONN_LOG_FILE) -- a diferencia de la pestaña
+    "Conexiones VPN" de arriba, esto no depende de journald ni de su
+    retención: solo 1 línea por evento real, pensado para durar años."""
+    try:
+        with open(LOG_CONN_FILE) as f:
+            return [l.rstrip() for l in f.readlines()[-n:]]
+    except Exception:
+        return []
+
+
 @app.route('/logs')
 @login_required
 def logs():
@@ -1588,6 +1613,19 @@ def logs():
     search      = request.args.get('q', '').strip().lower()
     quick_filter = request.args.get('f', '')
     raw_journal  = tab == 'vpn' and request.args.get('raw') == '1'
+
+    if tab == 'history':
+        # Historial PERMANENTE de conexiones (acl-poller.py), independiente
+        # de journald y su retención -- ver LOG_CONN_FILE.
+        history_lines = _read_conn_log(n)
+        if search:
+            history_lines = [l for l in history_lines if search in l.lower()]
+        history_lines = history_lines[-n:]
+        return render_template('logs.html',
+                               history_lines=history_lines,
+                               n=n, tab=tab, search=search,
+                               quick_filter=quick_filter, raw_journal=False,
+                               user=session['user'])
 
     if raw_journal:
         # Journal tal cual, con el ruido "MANAGEMENT: ..." incluido -- para

@@ -191,11 +191,17 @@
            data-tip="{{ t('log.tab_audit_tip') }}">
           &#128274; {{ t('log.tab_audit') }}
         </a>
+        <a class="log-tab {% if tab == 'history' %}active{% endif %}"
+           href="/logs?tab=history&n={{ n }}&q={{ search | urlencode }}"
+           data-tip="{{ t('log.tab_history_tip') }}">
+          &#128197; {{ t('log.tab_history') }}
+        </a>
       </div>
     </div>
 
     <!-- Filtros rápidos -->
     {% set _qbase = '/logs?tab=' ~ tab ~ '&n=' ~ n ~ ('&q=' ~ (search | urlencode) if search else '') %}
+    {% if tab != 'history' %}
     <div class="quick-filters">
       <span class="qf-label">{{ t('log.quick_filter_label') }}</span>
       <a class="qf-btn qf-all    {% if not quick_filter %}active{% endif %}"
@@ -212,6 +218,7 @@
            data-tip="{{ t('log.filter_raw_tip') }}">&#128269; {{ t('log.filter_raw') }}</a>
       {% endif %}
     </div>
+    {% endif %}
 
     <!-- Toolbar de búsqueda -->
     <form method="GET" action="/logs" class="toolbar">
@@ -245,6 +252,14 @@
         {% else %}
           <div class="empty-log">{{ t('log.empty_vpn') }}{% if search %}{{ t('log.empty_search_suffix', search=search) }}{% endif %}.</div>
         {% endif %}
+      {% elif tab == 'history' %}
+        {% if history_lines %}
+          {% for line in history_lines %}
+            <span class="log-line {{ line | history_class }}">{{ line | highlight(search) }}</span>
+          {% endfor %}
+        {% else %}
+          <div class="empty-log">{{ t('log.empty_history') }}{% if search %}{{ t('log.empty_search_suffix', search=search) }}{% endif %}.</div>
+        {% endif %}
       {% else %}
         {% if audit_lines %}
           {% for line in audit_lines %}
@@ -259,6 +274,8 @@
     <div class="log-count">
       {% if tab == 'vpn' %}
         {{ t('log.lines_shown', n=(vpn_lines | length)) }} · Log: <code>journalctl -u openvpn@server</code>
+      {% elif tab == 'history' %}
+        {{ t('log.lines_shown', n=(history_lines | length)) }} · Log: <code>/var/log/openvpn-manager/connections.log</code>
       {% else %}
         {{ t('log.lines_shown', n=(audit_lines | length)) }} · Log: <code>/var/log/openvpn-gui.log</code>
       {% endif %}
