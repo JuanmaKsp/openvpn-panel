@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.7'
+APP_VERSION = '1.7.8'
 
 # ---------------------------------------------------------------------------
 # Paths

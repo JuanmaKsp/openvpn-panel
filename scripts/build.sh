@@ -40,6 +40,7 @@ build_target() {
     cp "$REPO_ROOT/systemd/"*.service "$REPO_ROOT/systemd/"*.timer "$tree/etc/systemd/system/"
     cp "$REPO_ROOT/config/stunnel/openvpn-gui.conf" "$tree/etc/stunnel/openvpn-gui.conf"
     cp "$REPO_ROOT/config/logrotate.d/openvpn-gui" "$tree/etc/logrotate.d/openvpn-gui"
+    cp "$REPO_ROOT/config/logrotate.d/openvpn-manager" "$tree/etc/logrotate.d/openvpn-manager"
     cp "$REPO_ROOT/config/tmpfiles.d/openvpn-manager-acl.conf" "$tree/usr/lib/tmpfiles.d/openvpn-manager-acl.conf"
 
     cp -r "$pkg_dir/DEBIAN" "$tree/DEBIAN"

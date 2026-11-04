@@ -1,3 +1,4 @@
 /etc/stunnel/openvpn-gui.conf
 /etc/systemd/system/openvpn-gui.service
 /etc/logrotate.d/openvpn-gui
+/etc/logrotate.d/openvpn-manager

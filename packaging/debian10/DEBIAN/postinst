@@ -151,7 +151,7 @@ case "$1" in
         # podria saltarse anadiendo rutas manuales).
         #
         # Diseno: un servicio systemd aparte (ovpn-acl-poller), FUERA del
-        # proceso de OpenVPN, sondea la interfaz de gestion cada 2s y
+        # proceso de OpenVPN, sondea la interfaz de gestion periodicamente (POLL_INTERVAL en acl-poller.py) y
         # reconstruye la cadena OVPN_ACL segun quien esta conectado ahora
         # mismo y que rango tiene configurado. Se descarto deliberadamente
         # usar --client-connect/--client-disconnect de OpenVPN: ese gancho

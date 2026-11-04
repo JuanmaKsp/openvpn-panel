@@ -12,6 +12,30 @@ def test_connected_cache_max_age_has_margin_over_poll_interval(app_module, acl_p
     assert app_module._CONNECTED_CACHE_MAX_AGE > acl_poller_module.POLL_INTERVAL
 
 
+def test_log_connection_event_writes_one_line_per_event(acl_poller_module, tmp_path, monkeypatch):
+    """Historial permanente de conexiones (separado del journal de
+    openvpn@server, que es 99%+ ruido MANAGEMENT): cada evento real debe
+    quedar como 1 linea legible, nunca tirar el proceso si el fichero no
+    esta disponible."""
+    m = acl_poller_module
+    conn_log = tmp_path / 'connections.log'
+    monkeypatch.setattr(m, 'CONN_LOG_FILE', str(conn_log))
+
+    m.log_connection_event('CONNECT', 'juan', {'real_ip': '80.58.0.33', 'vip': '10.8.0.2'})
+    m.log_connection_event('DISCONNECT', 'juan', {'real_ip': '80.58.0.33', 'vip': '10.8.0.2'})
+
+    lines = conn_log.read_text().splitlines()
+    assert len(lines) == 2
+    assert 'CONNECT name=juan real_ip=80.58.0.33 vip=10.8.0.2' in lines[0]
+    assert 'DISCONNECT name=juan real_ip=80.58.0.33 vip=10.8.0.2' in lines[1]
+
+
+def test_log_connection_event_does_not_raise_when_file_unavailable(acl_poller_module, monkeypatch):
+    m = acl_poller_module
+    monkeypatch.setattr(m, 'CONN_LOG_FILE', '/no/existe/connections.log')
+    m.log_connection_event('CONNECT', 'juan', {'real_ip': '80.58.0.33', 'vip': '10.8.0.2'})  # no debe lanzar
+
+
 def test_is_public_ip(acl_poller_module):
     m = acl_poller_module
     assert m.is_public_ip('185.44.17.160')

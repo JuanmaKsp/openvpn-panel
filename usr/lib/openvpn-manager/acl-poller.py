@@ -56,6 +56,18 @@ GEO_DB_FILE = '/var/lib/openvpn-manager/dbip-city-lite.mmdb'
 GEO_ASN_DB_FILE = '/var/lib/openvpn-manager/dbip-asn-lite.mmdb'
 GEO_FILE    = '/var/lib/ovpn-acl/clients_geo.json'
 
+# Historial PERMANENTE de quien se conecto/desconecto y cuando -- separado
+# a proposito del journal de openvpn@server, que no sirve como registro de
+# auditoria a largo plazo: va mezclado con el ruido "MANAGEMENT: ..." del
+# propio sondeo (>99% de las lineas) y cualquier limite de tamaño que se le
+# ponga para controlar RAM/disco acaba purgando tambien los eventos reales,
+# no solo el ruido. Aqui solo se escribe 1 linea por evento REAL (conectar/
+# desconectar), asi que incluso sin rotar nunca pesaria muy poco.
+#
+# Vive en /var/log/openvpn-manager/ (LogsDirectory= en el .service, systemd
+# lo crea con los permisos correctos pese a ProtectSystem=strict).
+CONN_LOG_FILE = '/var/log/openvpn-manager/connections.log'
+
 # Cache de "quien esta conectado ahora" para que app.py (badge de conexion
 # en "Clientes VPN") no tenga que abrir su propia conexion a la interfaz de
 # gestion -- eso evitaria del todo el riesgo de contencion del puerto 7505
@@ -154,6 +166,20 @@ def valid_cidr(cidr):
         return str(net)
     except ValueError:
         return None
+
+
+def log_connection_event(event, name, info):
+    """Anade 1 linea a CONN_LOG_FILE por evento real de conexion/desconexion.
+    Nunca debe tirar el proceso abajo si el fichero no esta disponible por
+    cualquier motivo (systemd aun no ha creado el directorio, disco lleno,
+    etc.) -- se registra el fallo en el log normal y se sigue."""
+    try:
+        with open(CONN_LOG_FILE, 'a') as f:
+            f.write('%s %s name=%s real_ip=%s vip=%s\n' % (
+                time.strftime('%Y-%m-%d %H:%M:%S'), event, name,
+                info.get('real_ip', '-'), info.get('vip', '-')))
+    except OSError as e:
+        log.warning('no se pudo escribir en %s: %s', CONN_LOG_FILE, e)
 
 
 def write_connected_cache(connected):
@@ -484,16 +510,22 @@ def apply_state(state):
 def main():
     log.info('acl-poller arrancando, intervalo=%ss', POLL_INTERVAL)
     last_state = None
-    last_connected_names = set()
+    last_connected = {}  # {name: {'vip':..., 'real_ip':...}} del ciclo anterior
     while _running:
         try:
             connected = get_connected_clients()
             write_connected_cache(connected)
 
-            newly_connected = set(connected) - last_connected_names
+            newly_connected = set(connected) - set(last_connected)
+            newly_disconnected = set(last_connected) - set(connected)
+            for name in newly_connected:
+                log_connection_event('CONNECT', name, connected[name])
+            for name in newly_disconnected:
+                log_connection_event('DISCONNECT', name, last_connected[name])
+
             update_geo_for_new_connections(newly_connected, connected)
             retry_pending_geolocations()
-            last_connected_names = set(connected)
+            last_connected = connected
 
             state = build_desired_state(connected)
             if state != last_state:

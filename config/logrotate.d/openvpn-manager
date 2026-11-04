@@ -1,0 +1,11 @@
+/var/log/openvpn-manager/connections.log {
+    monthly
+    rotate 60
+    compress
+    delaycompress
+    missingok
+    notifempty
+    # no hace falta postrotate/senal: acl-poller.py abre el fichero en modo
+    # 'a' y lo cierra en cada escritura (ver log_connection_event()), nunca
+    # mantiene el descriptor abierto entre eventos
+}
