@@ -131,6 +131,7 @@
     .qf-btn.active { color: #fff; border-color: transparent; }
     .qf-all.active    { background: #556b8a; }
     .qf-events.active { background: #27ae60; }
+    .qf-raw.active    { background: #a04000; }
 
     /* Highlight del término buscado */
     mark { background: #f0c05a33; color: #f0c05a; border-radius: 2px; }
@@ -205,12 +206,18 @@
          data-tip="{% if tab == 'vpn' %}{{ t('log.filter_events_vpn_tip') }}{% else %}{{ t('log.filter_events_audit_tip') }}{% endif %}">
         {% if tab == 'vpn' %}&#9679; {{ t('log.filter_events_vpn') }}{% else %}&#9881; {{ t('log.filter_events_audit') }}{% endif %}
       </a>
+      {% if tab == 'vpn' %}
+        <a class="qf-btn qf-raw {% if raw_journal %}active{% endif %}"
+           href="{{ _qbase }}&raw=1"
+           data-tip="{{ t('log.filter_raw_tip') }}">&#128269; {{ t('log.filter_raw') }}</a>
+      {% endif %}
     </div>
 
     <!-- Toolbar de búsqueda -->
     <form method="GET" action="/logs" class="toolbar">
       <input type="hidden" name="tab" value="{{ tab }}">
       {% if quick_filter %}<input type="hidden" name="f" value="{{ quick_filter }}">{% endif %}
+      {% if raw_journal %}<input type="hidden" name="raw" value="1">{% endif %}
       <label for="searchInput">{{ t('log.search_label') }}</label>
       <input type="text" name="q" value="{{ search }}" placeholder="{{ t('log.search_placeholder') }}" id="searchInput"
              data-tip="{{ t('log.search_tip') }}">
@@ -222,9 +229,9 @@
       </select>
       <button type="submit" class="btn"
               data-tip="{{ t('log.filter_btn_tip') }}">&#128269; {{ t('log.filter_btn') }}</button>
-      <a href="/logs?tab={{ tab }}&n={{ n }}{% if quick_filter %}&f={{ quick_filter }}{% endif %}" class="btn btn-secondary"
+      <a href="/logs?tab={{ tab }}&n={{ n }}{% if quick_filter %}&f={{ quick_filter }}{% endif %}{% if raw_journal %}&raw=1{% endif %}" class="btn btn-secondary"
          data-tip="{{ t('log.clear_search_tip') }}">&#10005; {{ t('log.clear_search_btn') }}</a>
-      <a href="/logs?tab={{ tab }}&n={{ n }}&q={{ search | urlencode }}{% if quick_filter %}&f={{ quick_filter }}{% endif %}" class="btn btn-secondary btn-sm"
+      <a href="/logs?tab={{ tab }}&n={{ n }}&q={{ search | urlencode }}{% if quick_filter %}&f={{ quick_filter }}{% endif %}{% if raw_journal %}&raw=1{% endif %}" class="btn btn-secondary btn-sm"
          data-tip="{{ t('log.refresh_tip') }}">&#8635; {{ t('log.refresh_btn') }}</a>
     </form>
 
