@@ -1470,7 +1470,13 @@ def serve_profile(subpath):
 
 LOG_GUI_FILE    = '/var/log/openvpn-gui.log'
 LOG_OVPN_UNIT   = 'openvpn@server'
-_LOG_LINE_LIMIT = 1000
+_LOG_LINE_LIMIT = 1000   # tope de lineas a MOSTRAR (lo que puede pedir n=)
+_LOG_FETCH_LIMIT = 5000  # tope de lineas REALES a leer cuando hay filtro activo --
+                         # independiente de _LOG_LINE_LIMIT a proposito: si n se
+                         # acerca a _LOG_LINE_LIMIT, min(n*5, _LOG_LINE_LIMIT) se
+                         # queda en fetch_n == n (cero margen para filtrar) -- bug
+                         # real reportado: subir "lineas" no sacaba mas resultados
+                         # con el filtro rapido puesto.
 
 _VPN_QUICK_FILTERS = {
     'events': lambda l: any(x in l for x in (
@@ -1567,7 +1573,7 @@ def logs():
 
     # Leemos más líneas de las que mostramos cuando hay quick_filter o búsqueda
     # de texto activos, para tener suficiente material tras el filtrado
-    fetch_n = min(n * 5, _LOG_LINE_LIMIT) if (quick_filter or search) else n
+    fetch_n = min(n * 5, _LOG_FETCH_LIMIT) if (quick_filter or search) else n
 
     vpn_lines   = _read_journal(fetch_n)
     audit_lines = _read_gui_log(fetch_n)
