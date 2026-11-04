@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.6'
+APP_VERSION = '1.7.7'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -357,7 +357,11 @@ def months_to_days(months):
 
 
 _CONNECTED_CACHE_FILE    = '/run/openvpn-manager/connected.json'
-_CONNECTED_CACHE_MAX_AGE = 6  # segundos; algo más que el intervalo de sondeo del poller (2s)
+_CONNECTED_CACHE_MAX_AGE = 8  # segundos; algo más que el intervalo de sondeo del poller
+                               # (POLL_INTERVAL en acl-poller.py, 5s) -- si se cambia ahi,
+                               # cambiar tambien aqui, o la cache se vera "caducada" casi
+                               # siempre y el panel volvera a consultar en vivo en cada
+                               # peticion (el fallback de abajo), anulando el ahorro
 
 
 def get_connected_clients():
@@ -394,8 +398,7 @@ def get_connected_clients():
             data += chunk
             if b'\nEND' in data:
                 break
-        s.sendall(b'quit\n')
-        s.close()
+        s.close()  # cierre directo, sin 'quit' -- ver el mismo cambio en acl-poller.py
         for line in data.decode(errors='ignore').splitlines():
             if line.startswith('CLIENT_LIST,'):
                 parts = line.split(',')

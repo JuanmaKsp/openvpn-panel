@@ -2,6 +2,16 @@ import json
 import time
 
 
+def test_connected_cache_max_age_has_margin_over_poll_interval(app_module, acl_poller_module):
+    """app.py._CONNECTED_CACHE_MAX_AGE debe quedar por encima del
+    POLL_INTERVAL real de acl-poller.py -- si no, la cache que escribe el
+    poller se ve "caducada" casi siempre y el panel cae al fallback de
+    consulta en vivo en cada peticion, anulando el ahorro de trafico/ruido
+    que la cache existe para dar. Bug real: se cambio POLL_INTERVAL de 2 a
+    5s sin tocar este margen, que se quedo en 6s (solo 1s de holgura)."""
+    assert app_module._CONNECTED_CACHE_MAX_AGE > acl_poller_module.POLL_INTERVAL
+
+
 def test_is_public_ip(acl_poller_module):
     m = acl_poller_module
     assert m.is_public_ip('185.44.17.160')

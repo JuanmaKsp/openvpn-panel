@@ -114,8 +114,10 @@ def get_connected_clients():
             if not chunk:
                 break
             data += chunk
-        s.sendall(b'quit\n')
-        s.close()
+        s.close()  # cerrar directo en vez de enviar 'quit' -- se ahorra 1 de las
+                   # 4 lineas "MANAGEMENT: ..." por ciclo (-25%), mismo resultado:
+                   # OpenVPN detecta el cierre del socket igual, solo deja de
+                   # loguear un "CMD 'quit'" que no aportaba nada
         for line in data.decode(errors='ignore').splitlines():
             if line.startswith('CLIENT_LIST,'):
                 parts = line.split(',')
