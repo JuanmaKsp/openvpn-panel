@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.8'
+APP_VERSION = '1.7.9'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -357,11 +357,7 @@ def months_to_days(months):
 
 
 _CONNECTED_CACHE_FILE    = '/run/openvpn-manager/connected.json'
-_CONNECTED_CACHE_MAX_AGE = 8  # segundos; algo más que el intervalo de sondeo del poller
-                               # (POLL_INTERVAL en acl-poller.py, 5s) -- si se cambia ahi,
-                               # cambiar tambien aqui, o la cache se vera "caducada" casi
-                               # siempre y el panel volvera a consultar en vivo en cada
-                               # peticion (el fallback de abajo), anulando el ahorro
+_CONNECTED_CACHE_MAX_AGE = 6  # segundos; algo más que el intervalo de sondeo del poller (2s)
 
 
 def get_connected_clients():
@@ -398,7 +394,8 @@ def get_connected_clients():
             data += chunk
             if b'\nEND' in data:
                 break
-        s.close()  # cierre directo, sin 'quit' -- ver el mismo cambio en acl-poller.py
+        s.sendall(b'quit\n')
+        s.close()
         for line in data.decode(errors='ignore').splitlines():
             if line.startswith('CLIENT_LIST,'):
                 parts = line.split(',')
@@ -1554,6 +1551,23 @@ def _read_journal(n):
     return collected
 
 
+def _read_journal_raw(n):
+    """Lee las últimas n líneas TAL CUAL del journal de OpenVPN, incluido el
+    ruido "MANAGEMENT: ...". Para depurar un problema de conexión concreto
+    ese ruido es justo lo que hace falta (muestra cada sondeo del poller,
+    con su hora exacta). A diferencia de _read_journal, no hace falta el
+    escaneo en reversa con topes de seguridad: aquí no se busca señal
+    entre ruido, se quiere ver todo tal cual."""
+    try:
+        out = subprocess.run(
+            ['journalctl', '-u', LOG_OVPN_UNIT, '--no-pager', '-n', str(n), '--output=short'],
+            capture_output=True, text=True, timeout=10,
+        )
+        return [l for l in out.stdout.splitlines() if not l.startswith('-- ')]
+    except Exception:
+        return []
+
+
 def _read_gui_log(n):
     """Lee las últimas n líneas del log de auditoría del manager."""
     try:
@@ -1573,6 +1587,27 @@ def logs():
     tab         = request.args.get('tab', 'vpn')
     search      = request.args.get('q', '').strip().lower()
     quick_filter = request.args.get('f', '')
+    raw_journal  = tab == 'vpn' and request.args.get('raw') == '1'
+
+    if raw_journal:
+        # Journal tal cual, con el ruido "MANAGEMENT: ..." incluido -- para
+        # depurar un problema de conexion concreto, donde ese ruido (hora
+        # exacta de cada sondeo) sí es señal útil. Sin la logica de
+        # fetch_n/escaneo en reversa de _read_journal: aqui no hace falta.
+        vpn_lines = _read_journal_raw(n)
+        if search:
+            vpn_lines = [l for l in vpn_lines if search in l.lower()]
+        audit_lines = _read_gui_log(n)
+        if search:
+            audit_lines = [l for l in audit_lines if search in l.lower()]
+        vpn_lines   = vpn_lines[-n:]
+        audit_lines = audit_lines[-n:]
+        return render_template('logs.html',
+                               vpn_lines=vpn_lines,
+                               audit_lines=audit_lines,
+                               n=n, tab=tab, search=search,
+                               quick_filter=quick_filter, raw_journal=True,
+                               user=session['user'])
 
     # Leemos más líneas de las que mostramos cuando hay quick_filter o búsqueda
     # de texto activos, para tener suficiente material tras el filtrado
@@ -1600,7 +1635,7 @@ def logs():
                            vpn_lines=vpn_lines,
                            audit_lines=audit_lines,
                            n=n, tab=tab, search=search,
-                           quick_filter=quick_filter,
+                           quick_filter=quick_filter, raw_journal=False,
                            user=session['user'])
 
 
