@@ -1,0 +1,15 @@
+<script>
+  var PW_LABELS = { show: {{ t('pw.show') | tojson }}, hide: {{ t('pw.hide') | tojson }} };
+  function togglePw(id, btn) {
+    var el = document.getElementById(id);
+    if (el.type === 'password') {
+      el.type = 'text';
+      btn.innerHTML = '&#128584;';
+      btn.setAttribute('aria-label', PW_LABELS.hide);
+    } else {
+      el.type = 'password';
+      btn.innerHTML = '&#128065;';
+      btn.setAttribute('aria-label', PW_LABELS.show);
+    }
+  }
+</script>

@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.10'
+APP_VERSION = '1.7.11'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -370,6 +370,26 @@ _CONNECTED_CACHE_FILE    = '/run/openvpn-manager/connected.json'
 _CONNECTED_CACHE_MAX_AGE = 6  # segundos; algo más que el intervalo de sondeo del poller (2s)
 
 
+def _mgmt_connect():
+    """Abre una conexion nueva a la interfaz de gestion de OpenVPN y
+    consume el banner de bienvenida. El llamador envia sus comandos,
+    lee la respuesta y es responsable de mandar 'quit' y cerrar el socket."""
+    import socket as _socket
+    s = _socket.create_connection(('127.0.0.1', 7505), timeout=3)
+    s.recv(1024)
+    return s
+
+
+def _mgmt_read_until(s, marker=b'\nEND'):
+    data = b''
+    while marker not in data:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    return data.decode(errors='ignore')
+
+
 def get_connected_clients():
     """Devuelve el conjunto de nombres de clientes conectados ahora mismo.
 
@@ -390,23 +410,14 @@ def get_connected_clients():
     except (OSError, ValueError):
         pass
 
-    import socket as _socket
     connected = set()
     try:
-        s = _socket.create_connection(('127.0.0.1', 7505), timeout=3)
-        s.recv(1024)
+        s = _mgmt_connect()
         s.sendall(b'status 2\n')
-        data = b''
-        while True:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            data += chunk
-            if b'\nEND' in data:
-                break
+        text = _mgmt_read_until(s)
         s.sendall(b'quit\n')
         s.close()
-        for line in data.decode(errors='ignore').splitlines():
+        for line in text.splitlines():
             if line.startswith('CLIENT_LIST,'):
                 parts = line.split(',')
                 if len(parts) > 1 and parts[1]:
@@ -432,38 +443,27 @@ def get_connected_clients():
     return connected
 
 
-def get_blocked_clients():
+def scan_ccd_blocked():
+    """Escanea CCD_DIR una sola vez y devuelve (blocked, maintenance_blocked):
+    el conjunto completo de clientes bloqueados (manual o por mantenimiento)
+    y el subconjunto bloqueado especificamente por el modo mantenimiento."""
     blocked = set()
+    maintenance_blocked = set()
     if not os.path.isdir(CCD_DIR):
-        return blocked
-    for fname in os.listdir(CCD_DIR):
-        fpath = os.path.join(CCD_DIR, fname)
-        if os.path.isfile(fpath):
-            try:
-                with open(fpath) as f:
-                    if any(l.strip() == 'disable' for l in f):
-                        blocked.add(fname)
-            except Exception:
-                pass
-    return blocked
-
-
-def get_maintenance_blocked_clients():
-    """Clientes bloqueados específicamente por el modo mantenimiento (no bloqueos manuales)."""
-    blocked = set()
-    if not os.path.isdir(CCD_DIR):
-        return blocked
+        return blocked, maintenance_blocked
     for fname in os.listdir(CCD_DIR):
         fpath = os.path.join(CCD_DIR, fname)
         if os.path.isfile(fpath):
             try:
                 with open(fpath) as f:
                     marked = {l.strip() for l in f}
-                if 'disable' in marked and '# maintenance-blocked' in marked:
-                    blocked.add(fname)
             except Exception:
-                pass
-    return blocked
+                continue
+            if 'disable' in marked:
+                blocked.add(fname)
+                if '# maintenance-blocked' in marked:
+                    maintenance_blocked.add(fname)
+    return blocked, maintenance_blocked
 
 
 def block_client(name, via_maintenance=False):
@@ -498,26 +498,17 @@ def unblock_client(name):
 
 
 def mgmt_kill(name):
-    import socket as _socket
     try:
-        s = _socket.create_connection(('127.0.0.1', 7505), timeout=3)
-        s.recv(1024)
+        s = _mgmt_connect()
 
         # Obtener client-id para enviar HALT explícito al cliente
         s.sendall(b'status 2\n')
-        data = b''
-        while True:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            data += chunk
-            if b'\nEND' in data:
-                break
+        text = _mgmt_read_until(s)
 
         # Determinar índice de Client ID leyendo el HEADER dinámicamente
         client_id = None
         cid_idx = None
-        for line in data.decode(errors='ignore').splitlines():
+        for line in text.splitlines():
             if line.startswith('HEADER,CLIENT_LIST,'):
                 cols = line.split(',')
                 # cols[0]=HEADER, cols[1]=CLIENT_LIST, cols[2]=Common Name...
@@ -553,6 +544,7 @@ def mgmt_kill(name):
 
 def parse_index():
     clients = []
+    now = datetime.now()
     try:
         with open(INDEX_FILE) as f:
             for line in f:
@@ -571,7 +563,6 @@ def parse_index():
                 try:
                     expiry        = datetime.strptime(expiry_raw, '%y%m%d%H%M%SZ')
                     exp_str       = expiry.strftime('%d-%m-%Y')
-                    now           = datetime.now()
                     expired       = expiry < now
                     expiring_soon = (not expired) and (expiry - now).days <= 30
                 except Exception:
@@ -666,6 +657,14 @@ def list_panel_users():
         return []
 
 
+def _chpasswd(username, password):
+    proc = subprocess.run(['chpasswd'], input=f'{username}:{password}',
+                          text=True, capture_output=True)
+    if proc.returncode != 0:
+        return False, proc.stderr
+    return True, ''
+
+
 def create_panel_user(username, password):
     ensure_panel_group()
     result = run_cmd(['adduser', '--disabled-password', '--gecos', '',
@@ -673,11 +672,7 @@ def create_panel_user(username, password):
     if result.returncode != 0:
         return False, result.stderr
     run_cmd(['usermod', '-aG', PANEL_GROUP, username])
-    proc = subprocess.run(['chpasswd'], input=f'{username}:{password}',
-                          text=True, capture_output=True)
-    if proc.returncode != 0:
-        return False, proc.stderr
-    return True, ''
+    return _chpasswd(username, password)
 
 
 def delete_panel_user(username):
@@ -697,11 +692,7 @@ def reset_panel_user_password(username, password):
     # cuenta normal del sistema — no es una ruta genérica de "passwd".
     if username not in list_panel_users():
         return False, t('flash.not_panel_user')
-    proc = subprocess.run(['chpasswd'], input=f'{username}:{password}',
-                          text=True, capture_output=True)
-    if proc.returncode != 0:
-        return False, proc.stderr
-    return True, ''
+    return _chpasswd(username, password)
 
 
 def clean_easyrsa_artifacts(name):
@@ -764,8 +755,7 @@ def get_static_pool_network():
         return None
 
 
-def _used_static_blocks(meta):
-    static_net = get_static_pool_network()
+def _used_static_blocks(static_net, meta):
     used = set()
     if static_net is None:
         return used
@@ -789,7 +779,7 @@ def allocate_static_ip(name, meta):
     static_net = get_static_pool_network()
     if static_net is None:
         return None
-    used = _used_static_blocks(meta)
+    used = _used_static_blocks(static_net, meta)
     total_blocks = static_net.num_addresses // 4
     # El primer bloque se deja libre, igual que el pool dinamico reserva
     # el suyo para el propio extremo del servidor.
@@ -823,7 +813,7 @@ def resolve_manual_static_ip(ip_str, meta):
     if offset % 4 != 2:
         suggested = ipaddress.ip_address(int(static_net.network_address) + block * 4 + 2)
         return None, t('flash.staticip_invalid_offset', ip=addr, suggested=suggested)
-    if block in _used_static_blocks(meta):
+    if block in _used_static_blocks(static_net, meta):
         return None, t('flash.staticip_ip_taken', ip=addr)
     peer_ip = str(ipaddress.ip_address(int(addr) - 1))
     return (str(addr), peer_ip), None
@@ -912,15 +902,25 @@ def _temp_passfile(password: str):
             pass
 
 
-def build_create_cmd(name, email, password):
+def run_issue_cmd(name, email, password, days):
+    """Ejecuta openvpn-addclient -- usado tanto por create() como por
+    renew() (que primero revoca y luego reemite con el mismo comando). Si
+    hay password, se pasa via fichero temporal (nunca por variable de
+    entorno ni argv, donde quedaria visible en /proc o en el listado de
+    procesos)."""
     cmd = ['/usr/local/bin/openvpn-addclient', name, email]
-    extra_env = {}
+    extra_env = {'EASYRSA_CERT_EXPIRE': str(days)}
     if password:
         cmd.append('--pass')
-        # password written to temp file — never exposed in env listing
-        # caller must use _temp_passfile context and call this inside it
-        extra_env['_PASSFILE_PENDING'] = password   # marker; replaced below
-    return cmd, extra_env
+        with _temp_passfile(password) as pfile:
+            extra_env['EASYRSA_PASSOUT'] = f'file:{pfile}'
+            extra_env['EASYRSA_PASSIN']  = f'file:{pfile}'
+            return run_cmd(cmd, extra_env=extra_env)
+    return run_cmd(cmd, extra_env=extra_env)
+
+
+def _month_plural(months):
+    return '' if months == 1 else ('s' if g.lang == 'en' else 'es')
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -971,7 +971,7 @@ def index():
     meta           = load_meta()
     default_months = get_default_months()
     connected      = get_connected_clients()
-    blocked        = get_blocked_clients()
+    blocked, maintenance_blocked = scan_ccd_blocked()
     for c in clients:
         m = meta.get(c['name'], {})
         c['email']              = m.get('email', '')
@@ -983,7 +983,7 @@ def index():
     # Activos primero, expirados después, revocados al final
     order = {'activo': 0, 'revocado': 2}
     clients.sort(key=lambda c: (order.get(c['status'], 1), c['expired'], c['name']))
-    maintenance_blocked_count = len(get_maintenance_blocked_clients())
+    maintenance_blocked_count = len(maintenance_blocked)
     maintenance = bool(maintenance_blocked_count)
     return render_template('index.html',
                            clients=clients,
@@ -1083,17 +1083,7 @@ def create():
     cidrs = parse_cidrs(raw_cidrs)
     days  = months_to_days(months)
 
-    cmd, extra_env = build_create_cmd(name, email, password)
-    extra_env['EASYRSA_CERT_EXPIRE'] = str(days)
-
-    if password:
-        with _temp_passfile(password) as pfile:
-            extra_env['EASYRSA_PASSOUT'] = f'file:{pfile}'
-            extra_env['EASYRSA_PASSIN']  = f'file:{pfile}'
-            extra_env.pop('_PASSFILE_PENDING', None)
-            result = run_cmd(cmd, extra_env=extra_env)
-    else:
-        result = run_cmd(cmd, extra_env=extra_env)
+    result = run_issue_cmd(name, email, password, days)
 
     if result.returncode != 0:
         logger.error('create failed name=%s stderr=%s', name, result.stderr)
@@ -1111,7 +1101,7 @@ def create():
     save_meta(meta)
 
     logger.info('create OK name=%s user=%s ip=%s months=%d', name, session['user'], _client_ip(), months)
-    msg = t('flash.create_ok', name=name, months=months, plural=('' if months == 1 else 's' if g.lang == 'en' else 'es'))
+    msg = t('flash.create_ok', name=name, months=months, plural=_month_plural(months))
     if password:
         msg += t('flash.create_ok_pass')
     if cidrs:
@@ -1257,7 +1247,7 @@ def maintenance_on():
 def maintenance_off():
     # Solo desbloquea lo que bloqueó el propio modo mantenimiento — los
     # bloqueos manuales (/block/<name>) se quedan como estaban.
-    blocked = get_maintenance_blocked_clients()
+    _, blocked = scan_ccd_blocked()
     for name in blocked:
         unblock_client(name)
     logger.info('maintenance OFF unblocked=%d user=%s ip=%s',
@@ -1347,17 +1337,7 @@ def renew(name):
 
     clean_easyrsa_artifacts(name)
 
-    cmd, extra_env = build_create_cmd(name, email, password)
-    extra_env['EASYRSA_CERT_EXPIRE'] = str(days)
-
-    if password:
-        with _temp_passfile(password) as pfile:
-            extra_env['EASYRSA_PASSOUT'] = f'file:{pfile}'
-            extra_env['EASYRSA_PASSIN']  = f'file:{pfile}'
-            extra_env.pop('_PASSFILE_PENDING', None)
-            result = run_cmd(cmd, extra_env=extra_env)
-    else:
-        result = run_cmd(cmd, extra_env=extra_env)
+    result = run_issue_cmd(name, email, password, days)
 
     if result.returncode != 0:
         logger.error('renew/reissue failed name=%s stderr=%s', name, result.stderr)
@@ -1389,7 +1369,7 @@ def renew(name):
     save_meta(meta)
 
     logger.info('renew OK name=%s user=%s ip=%s months=%d', name, session['user'], _client_ip(), months)
-    flash(t('flash.renew_ok', name=name, months=months, plural=('' if months == 1 else 's' if g.lang == 'en' else 'es')), 'success')
+    flash(t('flash.renew_ok', name=name, months=months, plural=_month_plural(months)), 'success')
     return redirect(url_for('index'), 303)
 
 
@@ -1602,6 +1582,51 @@ def _read_conn_log(n):
         return []
 
 
+def _logs_view(tab, n, search, quick_filter, raw_journal):
+    """Pipeline comun a los 3 modos del visor de logs (vpn filtrado, vpn
+    crudo/raw, historial permanente, auditoria): elegir la fuente segun
+    la pestaña, aplicar el filtro rapido solo donde tiene sentido
+    (nunca en raw ni en history, que no lo soportan) y la busqueda de
+    texto (siempre), recortar a n, y devolver el dict de kwargs para la
+    plantilla. Antes cada modo era su propia rama que repetia este mismo
+    fetch->filtrar->recortar."""
+    if tab == 'history':
+        # Historial PERMANENTE de conexiones (acl-poller.py), independiente
+        # de journald y su retención -- ver LOG_CONN_FILE.
+        lines = _read_conn_log(n)
+        if search:
+            lines = [l for l in lines if search in l.lower()]
+        return {'history_lines': lines[-n:]}
+
+    if tab == 'audit':
+        fetch_n = min(n * 5, _LOG_FETCH_LIMIT) if (quick_filter or search) else n
+        lines = _read_gui_log(fetch_n)
+        if quick_filter in _AUDIT_QUICK_FILTERS:
+            lines = [l for l in lines if _AUDIT_QUICK_FILTERS[quick_filter](l)]
+        if search:
+            lines = [l for l in lines if search in l.lower()]
+        return {'audit_lines': lines[-n:]}
+
+    # tab == 'vpn'
+    if raw_journal:
+        # Journal tal cual, con el ruido "MANAGEMENT: ..." incluido -- para
+        # depurar un problema de conexion concreto, donde ese ruido (hora
+        # exacta de cada sondeo) sí es señal útil. Sin fetch_n ni filtro
+        # rapido: aqui no se busca señal entre ruido, se quiere ver todo.
+        lines = _read_journal_raw(n)
+        if search:
+            lines = [l for l in lines if search in l.lower()]
+        return {'vpn_lines': lines[-n:]}
+
+    fetch_n = min(n * 5, _LOG_FETCH_LIMIT) if (quick_filter or search) else n
+    lines = _read_journal(fetch_n)
+    if quick_filter in _VPN_QUICK_FILTERS:
+        lines = [l for l in lines if _VPN_QUICK_FILTERS[quick_filter](l)]
+    if search:
+        lines = [l for l in lines if search in l.lower()]
+    return {'vpn_lines': lines[-n:]}
+
+
 @app.route('/logs')
 @login_required
 def logs():
@@ -1609,72 +1634,16 @@ def logs():
         n = min(max(int(request.args.get('n', 200)), 50), _LOG_LINE_LIMIT)
     except (ValueError, TypeError):
         n = 200
-    tab         = request.args.get('tab', 'vpn')
-    search      = request.args.get('q', '').strip().lower()
+    tab          = request.args.get('tab', 'vpn')
+    search       = request.args.get('q', '').strip().lower()
     quick_filter = request.args.get('f', '')
     raw_journal  = tab == 'vpn' and request.args.get('raw') == '1'
 
-    if tab == 'history':
-        # Historial PERMANENTE de conexiones (acl-poller.py), independiente
-        # de journald y su retención -- ver LOG_CONN_FILE.
-        history_lines = _read_conn_log(n)
-        if search:
-            history_lines = [l for l in history_lines if search in l.lower()]
-        history_lines = history_lines[-n:]
-        return render_template('logs.html',
-                               history_lines=history_lines,
-                               n=n, tab=tab, search=search,
-                               quick_filter=quick_filter, raw_journal=False,
-                               user=session['user'])
-
-    if raw_journal:
-        # Journal tal cual, con el ruido "MANAGEMENT: ..." incluido -- para
-        # depurar un problema de conexion concreto, donde ese ruido (hora
-        # exacta de cada sondeo) sí es señal útil. Sin la logica de
-        # fetch_n/escaneo en reversa de _read_journal: aqui no hace falta.
-        vpn_lines = _read_journal_raw(n)
-        if search:
-            vpn_lines = [l for l in vpn_lines if search in l.lower()]
-        audit_lines = _read_gui_log(n)
-        if search:
-            audit_lines = [l for l in audit_lines if search in l.lower()]
-        vpn_lines   = vpn_lines[-n:]
-        audit_lines = audit_lines[-n:]
-        return render_template('logs.html',
-                               vpn_lines=vpn_lines,
-                               audit_lines=audit_lines,
-                               n=n, tab=tab, search=search,
-                               quick_filter=quick_filter, raw_journal=True,
-                               user=session['user'])
-
-    # Leemos más líneas de las que mostramos cuando hay quick_filter o búsqueda
-    # de texto activos, para tener suficiente material tras el filtrado
-    fetch_n = min(n * 5, _LOG_FETCH_LIMIT) if (quick_filter or search) else n
-
-    vpn_lines   = _read_journal(fetch_n)
-    audit_lines = _read_gui_log(fetch_n)
-
-    # Aplicar quick filter
-    if quick_filter and quick_filter in _VPN_QUICK_FILTERS:
-        vpn_lines = [l for l in vpn_lines if _VPN_QUICK_FILTERS[quick_filter](l)]
-    if quick_filter and quick_filter in _AUDIT_QUICK_FILTERS:
-        audit_lines = [l for l in audit_lines if _AUDIT_QUICK_FILTERS[quick_filter](l)]
-
-    # Aplicar búsqueda de texto libre
-    if search:
-        vpn_lines   = [l for l in vpn_lines   if search in l.lower()]
-        audit_lines = [l for l in audit_lines if search in l.lower()]
-
-    # Limitar al número pedido tras el filtrado
-    vpn_lines   = vpn_lines[-n:]
-    audit_lines = audit_lines[-n:]
-
     return render_template('logs.html',
-                           vpn_lines=vpn_lines,
-                           audit_lines=audit_lines,
                            n=n, tab=tab, search=search,
-                           quick_filter=quick_filter, raw_journal=False,
-                           user=session['user'])
+                           quick_filter=quick_filter, raw_journal=raw_journal,
+                           user=session['user'],
+                           **_logs_view(tab, n, search, quick_filter, raw_journal))
 
 
 @app.route('/help')
@@ -1688,6 +1657,18 @@ def help_page():
 @root_required
 def admin_users():
     return render_template('admin_users.html', users=list_panel_users(), user=session['user'])
+
+
+def _validate_new_password(password, password2):
+    """Devuelve la clave de traduccion del error si la contraseña nueva no
+    es valida, o None si esta bien."""
+    if '\n' in password or '\r' in password:
+        return 'flash.password_no_newlines'
+    if len(password) < 8:
+        return 'flash.password_too_short'
+    if password != password2:
+        return 'flash.passwords_mismatch'
+    return None
 
 
 @app.route('/admin/users/create', methods=['POST'])
@@ -1709,14 +1690,9 @@ def admin_users_create():
     except KeyError:
         pass
 
-    if '\n' in password or '\r' in password:
-        flash(t('flash.password_no_newlines'), 'error')
-        return redirect(url_for('admin_users'), 303)
-    if len(password) < 8:
-        flash(t('flash.password_too_short'), 'error')
-        return redirect(url_for('admin_users'), 303)
-    if password != password2:
-        flash(t('flash.passwords_mismatch'), 'error')
+    err_key = _validate_new_password(password, password2)
+    if err_key:
+        flash(t(err_key), 'error')
         return redirect(url_for('admin_users'), 303)
 
     ok, err = create_panel_user(username, password)
@@ -1745,14 +1721,9 @@ def admin_users_reset_password(name):
     password  = request.form.get('password', '')
     password2 = request.form.get('password2', '')
 
-    if '\n' in password or '\r' in password:
-        flash(t('flash.password_no_newlines'), 'error')
-        return redirect(url_for('admin_users'), 303)
-    if len(password) < 8:
-        flash(t('flash.password_too_short'), 'error')
-        return redirect(url_for('admin_users'), 303)
-    if password != password2:
-        flash(t('flash.passwords_mismatch'), 'error')
+    err_key = _validate_new_password(password, password2)
+    if err_key:
+        flash(t(err_key), 'error')
         return redirect(url_for('admin_users'), 303)
 
     ok, err = reset_panel_user_password(name, password)

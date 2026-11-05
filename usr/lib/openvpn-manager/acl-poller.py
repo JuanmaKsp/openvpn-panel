@@ -137,8 +137,22 @@ def get_connected_clients():
     return result
 
 
+_ranges_cache = {'mtime': None, 'ranges': {}}
+
+
 def load_ranges():
-    """Devuelve {name: [cidrs]} para clientes con ip_ranges no vacio."""
+    """Devuelve {name: [cidrs]} para clientes con ip_ranges no vacio.
+    Cacheado por mtime de META_FILE -- en estado estable (el panel toca
+    META_FILE muchisimo menos que el sondeo cada 2s) evita reabrir y
+    re-parsear el JSON en cada ciclo, igual que _MmdbReader hace con las
+    bases .mmdb."""
+    try:
+        mtime = os.path.getmtime(META_FILE)
+    except OSError as e:
+        log.warning('no se pudo leer %s: %s', META_FILE, e)
+        return {}
+    if mtime == _ranges_cache['mtime']:
+        return _ranges_cache['ranges']
     try:
         with open(META_FILE) as f:
             meta = json.load(f)
@@ -150,6 +164,8 @@ def load_ranges():
         cidrs = data.get('ip_ranges') or []
         if cidrs:
             ranges[name] = cidrs
+    _ranges_cache['mtime']  = mtime
+    _ranges_cache['ranges'] = ranges
     return ranges
 
 
@@ -177,30 +193,41 @@ def log_connection_event(event, name, info):
         log.warning('no se pudo escribir en %s: %s', CONN_LOG_FILE, e)
 
 
+def _atomic_write_json(path, data, mode=None, indent=None, log_label=None):
+    """Escritura atomica (fichero temporal + rename) para que una lectura
+    a medio escribir nunca vea JSON incompleto."""
+    try:
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(data, f, indent=indent)
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning('no se pudo escribir %s: %s', log_label or path, e)
+
+
 def write_connected_cache(connected):
     """Escribe {name: virtual_ip} para que app.py lo lea sin tener que
-    consultar la interfaz de gestion por su cuenta. Escritura atomica
-    (fichero temporal + rename) para que una lectura a medio escribir
-    nunca vea JSON incompleto."""
-    try:
-        tmp = CONNECTED_CACHE_FILE + '.tmp'
-        with open(tmp, 'w') as f:
-            json.dump(connected, f)
-        os.chmod(tmp, 0o640)
-        os.replace(tmp, CONNECTED_CACHE_FILE)
-    except OSError as e:
-        log.warning('no se pudo escribir la cache de conectados: %s', e)
+    consultar la interfaz de gestion por su cuenta."""
+    _atomic_write_json(CONNECTED_CACHE_FILE, connected, mode=0o640,
+                       log_label='la cache de conectados')
 
 
-class _GeoReader:
-    """Envoltorio perezoso sobre el lector .mmdb. Vuelve a abrir el fichero
+class _MmdbReader:
+    """Envoltorio perezoso sobre un lector .mmdb. Vuelve a abrir el fichero
     si cambia su mtime (el timer mensual lo reemplaza atomicamente) o si
     aparece por primera vez (aun no se habia descargado al arrancar este
     servicio). Si falta la libreria maxminddb o el fichero, todo lookup
-    devuelve None sin error -- el mapa simplemente no tendra datos hasta
-    que la base de datos este disponible."""
+    devuelve None sin error -- esos datos simplemente no estaran
+    disponibles hasta que la base de datos exista. Compartido entre la
+    base GeoIP (ubicacion) y la base ASN (operador/ISP) -- mismo formato
+    .mmdb, mismo ciclo de vida, solo cambian la ruta y como se interpreta
+    el registro crudo que devuelve."""
 
-    def __init__(self):
+    def __init__(self, db_path, label):
+        self._db_path = db_path
+        self._label = label
         self._reader = None
         self._mtime = None
 
@@ -208,92 +235,35 @@ class _GeoReader:
         if maxminddb is None:
             return False
         try:
-            mtime = os.path.getmtime(GEO_DB_FILE)
+            mtime = os.path.getmtime(self._db_path)
         except OSError:
             return False
         if self._reader is None or mtime != self._mtime:
             try:
                 if self._reader is not None:
                     self._reader.close()
-                self._reader = maxminddb.open_database(GEO_DB_FILE)
+                self._reader = maxminddb.open_database(self._db_path)
                 self._mtime = mtime
-                log.info('base de datos GeoIP (re)cargada: %s', GEO_DB_FILE)
+                log.info('base de datos %s (re)cargada: %s', self._label, self._db_path)
             except Exception as e:
-                log.warning('no se pudo abrir la base de datos GeoIP %s: %s', GEO_DB_FILE, e)
+                log.warning('no se pudo abrir la base de datos %s %s: %s', self._label, self._db_path, e)
                 self._reader = None
                 return False
         return True
 
-    def lookup(self, ip):
+    def get(self, ip):
+        """Registro crudo del .mmdb para esa IP, o None (sin lector listo,
+        IP sin registro, o IP invalida)."""
         if not self._ensure_open():
             return None
         try:
-            rec = self._reader.get(ip)
+            return self._reader.get(ip)
         except (ValueError, OSError):
             return None
-        if not rec:
-            return None
-        loc = rec.get('location') or {}
-        lat, lon = loc.get('latitude'), loc.get('longitude')
-        if lat is None or lon is None:
-            return None
-        city = (rec.get('city') or {}).get('names', {}).get('en', '')
-        country = rec.get('country') or {}
-        return {
-            'lat': lat,
-            'lon': lon,
-            'city': city,
-            'country': country.get('names', {}).get('en', ''),
-            'country_code': country.get('iso_code', ''),
-        }
 
 
-_geo_reader = _GeoReader()
-
-
-class _AsnReader:
-    """Mismo envoltorio perezoso que _GeoReader, para la base de datos de
-    operador/ASN (dbip-asn-lite). Se usa solo para mostrar el nombre del
-    ISP y para la deteccion best-effort de "posible conexion movil" --
-    nunca afecta a la ubicacion en el mapa, que viene de _GeoReader."""
-
-    def __init__(self):
-        self._reader = None
-        self._mtime = None
-
-    def _ensure_open(self):
-        if maxminddb is None:
-            return False
-        try:
-            mtime = os.path.getmtime(GEO_ASN_DB_FILE)
-        except OSError:
-            return False
-        if self._reader is None or mtime != self._mtime:
-            try:
-                if self._reader is not None:
-                    self._reader.close()
-                self._reader = maxminddb.open_database(GEO_ASN_DB_FILE)
-                self._mtime = mtime
-                log.info('base de datos ASN (re)cargada: %s', GEO_ASN_DB_FILE)
-            except Exception as e:
-                log.warning('no se pudo abrir la base de datos ASN %s: %s', GEO_ASN_DB_FILE, e)
-                self._reader = None
-                return False
-        return True
-
-    def lookup(self, ip):
-        if not self._ensure_open():
-            return None
-        try:
-            rec = self._reader.get(ip)
-        except (ValueError, OSError):
-            return None
-        if not rec:
-            return None
-        return rec.get('autonomous_system_organization') or None
-
-
-_asn_reader = _AsnReader()
+_geo_db = _MmdbReader(GEO_DB_FILE, 'GeoIP')
+_asn_db = _MmdbReader(GEO_ASN_DB_FILE, 'ASN')
 
 # Palabras que, si aparecen en el nombre del operador (ASN), indican con
 # razonable confianza que ese bloque de IP es de una red movil -- heuristica
@@ -319,7 +289,10 @@ def asn_lookup(ip_str):
     base de datos ASN no esta disponible, o no hay registro para esa IP."""
     if not is_public_ip(ip_str):
         return None
-    org = _asn_reader.lookup(ip_str)
+    rec = _asn_db.get(ip_str)
+    if not rec:
+        return None
+    org = rec.get('autonomous_system_organization') or None
     if not org:
         return None
     return {'isp': org, 'is_mobile': is_mobile_org(org)}
@@ -344,10 +317,43 @@ def geolocate(ip_str):
     para esa IP (comun con IPs muy nuevas o rangos no asignados)."""
     if not is_public_ip(ip_str):
         return None
-    return _geo_reader.lookup(ip_str)
+    rec = _geo_db.get(ip_str)
+    if not rec:
+        return None
+    loc = rec.get('location') or {}
+    lat, lon = loc.get('latitude'), loc.get('longitude')
+    if lat is None or lon is None:
+        return None
+    city = (rec.get('city') or {}).get('names', {}).get('en', '')
+    country = rec.get('country') or {}
+    return {
+        'lat': lat,
+        'lon': lon,
+        'city': city,
+        'country': country.get('names', {}).get('en', ''),
+        'country_code': country.get('iso_code', ''),
+    }
 
 
 GEO_HISTORY_MAX = 5  # IPs *distintas* como mucho por cliente, no conexiones
+
+
+def _enrich_entry(entry, ip):
+    """Completa 'lat'/'lon'/'city'/'country'/'country_code' (si falta
+    'lat') y 'isp'/'is_mobile' (si falta 'isp') en entry a partir de ip.
+    Devuelve True si se resolvio y escribio algo nuevo en entry."""
+    resolved = False
+    if 'lat' not in entry:
+        loc = geolocate(ip)
+        if loc:
+            entry.update(loc)
+            resolved = True
+    if 'isp' not in entry:
+        isp = asn_lookup(ip)
+        if isp:
+            entry.update(isp)
+            resolved = True
+    return resolved
 
 
 def update_geo_for_new_connections(newly_connected_names, connected):
@@ -379,12 +385,7 @@ def update_geo_for_new_connections(newly_connected_names, connected):
         if not real_ip:
             continue
         entry = {'ip': real_ip, 'ts': int(time.time())}
-        loc = geolocate(real_ip)
-        if loc:
-            entry.update(loc)
-        isp = asn_lookup(real_ip)
-        if isp:
-            entry.update(isp)
+        _enrich_entry(entry, real_ip)
 
         history = geo.get(name, {}).get('history', [])
         history = [h for h in history if h.get('ip') != real_ip]  # quitar duplicado, si lo hay
@@ -403,13 +404,7 @@ def update_geo_for_new_connections(newly_connected_names, connected):
 
 
 def _save_geo(geo):
-    try:
-        tmp = GEO_FILE + '.tmp'
-        with open(tmp, 'w') as f:
-            json.dump(geo, f, indent=2)
-        os.replace(tmp, GEO_FILE)
-    except OSError as e:
-        log.warning('no se pudo escribir %s: %s', GEO_FILE, e)
+    _atomic_write_json(GEO_FILE, geo, indent=2)
 
 
 def retry_pending_geolocations():
@@ -439,21 +434,15 @@ def retry_pending_geolocations():
             if not ip or not is_public_ip(ip):
                 continue  # privada/invalida: nunca va a resolver, no reintentar
 
-            if 'lat' not in entry:
-                loc = geolocate(ip)
-                if loc:
-                    entry.update(loc)
-                    changed = True
+            had_lat, had_isp = 'lat' in entry, 'isp' in entry
+            if _enrich_entry(entry, ip):
+                changed = True
+                if not had_lat and 'lat' in entry:
                     log.info('ubicacion pendiente resuelta en reintento: name=%s ip=%s city=%s country=%s',
-                              name, ip, loc.get('city', ''), loc.get('country_code', ''))
-
-            if 'isp' not in entry:
-                isp = asn_lookup(ip)
-                if isp:
-                    entry.update(isp)
-                    changed = True
+                              name, ip, entry.get('city', ''), entry.get('country_code', ''))
+                if not had_isp and 'isp' in entry:
                     log.info('operador pendiente resuelto en reintento: name=%s ip=%s isp=%s',
-                              name, ip, isp.get('isp', ''))
+                              name, ip, entry.get('isp', ''))
 
     if changed:
         _save_geo(geo)

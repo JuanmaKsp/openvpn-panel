@@ -207,11 +207,13 @@
       <a class="qf-btn qf-all    {% if not quick_filter %}active{% endif %}"
          href="{{ _qbase }}"
          data-tip="{{ t('log.filter_all_tip') }}">{{ t('log.filter_all') }}</a>
+      {% if not raw_journal %}
       <a class="qf-btn qf-events {% if quick_filter == 'events' %}active{% endif %}"
          href="{{ _qbase }}&f=events"
          data-tip="{% if tab == 'vpn' %}{{ t('log.filter_events_vpn_tip') }}{% else %}{{ t('log.filter_events_audit_tip') }}{% endif %}">
         {% if tab == 'vpn' %}&#9679; {{ t('log.filter_events_vpn') }}{% else %}&#9881; {{ t('log.filter_events_audit') }}{% endif %}
       </a>
+      {% endif %}
       {% if tab == 'vpn' %}
         <a class="qf-btn qf-raw {% if raw_journal %}active{% endif %}"
            href="{{ _qbase }}&raw=1"
