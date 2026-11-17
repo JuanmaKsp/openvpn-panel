@@ -49,6 +49,16 @@ def acl_poller_module():
     return module
 
 
+@pytest.fixture(scope='session')
+def update_geoip_module():
+    """update-geoip.py has a hyphen in its filename too -- same load trick."""
+    spec = importlib.util.spec_from_file_location(
+        'update_geoip', REPO_ROOT / 'usr' / 'lib' / 'openvpn-manager' / 'update-geoip.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.fixture(autouse=True)
 def _reset_module_state(app_module):
     """app.py keeps some state (failed-login counters, revoked session

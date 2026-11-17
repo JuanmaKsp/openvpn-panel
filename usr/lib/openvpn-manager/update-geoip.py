@@ -22,15 +22,40 @@ ciudad es la base de datos principal (si falla, se devuelve error); el ASN
 es best-effort (si falla, solo se avisa, porque solo afecta al nombre del
 operador mostrado, no a la ubicacion en el mapa).
 """
-import gzip
 import os
 import sys
 import tempfile
 import urllib.request
+import zlib
 from datetime import date, timedelta
 
 DEST_DIR = '/var/lib/openvpn-manager'
 TIMEOUT  = 30
+# Limites de cordura: dbip-city-lite.mmdb.gz real pesa hoy ~60MB comprimido
+# / ~127MB descomprimido -- estos limites dejan margen de crecimiento de
+# sobra sin dejar de acotar el peor caso. Sin esto, una fuente comprometida
+# o una respuesta corrupta podria agotar la memoria del proceso (que corre
+# como root via ovpn-geoip-update.timer).
+MAX_COMPRESSED_BYTES   = 150 * 1024 * 1024
+MAX_DECOMPRESSED_BYTES = 500 * 1024 * 1024
+
+
+def _read_capped(resp, max_bytes):
+    data = resp.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f'respuesta mayor que el limite de {max_bytes} bytes')
+    return data
+
+
+def _gzip_decompress_capped(compressed, max_bytes):
+    d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    out = d.decompress(compressed, max_bytes + 1)
+    if len(out) > max_bytes or d.unconsumed_tail:
+        raise ValueError(f'descomprimido mayor que el limite de {max_bytes} bytes')
+    out += d.flush()
+    if len(out) > max_bytes:
+        raise ValueError(f'descomprimido mayor que el limite de {max_bytes} bytes')
+    return out
 
 CITY_URLS = ['https://cdn.jsdelivr.net/npm/dbip-city-lite/dbip-city-lite.mmdb.gz']
 CITY_DEST = os.path.join(DEST_DIR, 'dbip-city-lite.mmdb')
@@ -64,15 +89,15 @@ def _download_mmdb(urls, dest, label):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'openvpn-manager-geoip-updater'})
             with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                compressed = resp.read()
+                compressed = _read_capped(resp, MAX_COMPRESSED_BYTES)
         except Exception as e:
             log(f'{label}: no se pudo descargar {url}: {e}')
             continue
 
         try:
-            data = gzip.decompress(compressed)
-        except Exception as e:
-            log(f'{label}: la descarga de {url} no es un .gz valido: {e}')
+            data = _gzip_decompress_capped(compressed, MAX_DECOMPRESSED_BYTES)
+        except (zlib.error, ValueError) as e:
+            log(f'{label}: la descarga de {url} no es un .gz valido o excede el limite: {e}')
             continue
 
         # Comprobacion minima de cordura: un .mmdb real termina con el

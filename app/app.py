@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.12'
+APP_VERSION = '1.7.13'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -203,6 +203,7 @@ def security_headers(resp):
         "img-src 'self' data: https://*.tile.openstreetmap.org;"
     )
     resp.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains'
+    resp.headers['Permissions-Policy']        = 'camera=(), microphone=(), geolocation=(), payment=()'
     return resp
 
 
