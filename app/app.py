@@ -48,7 +48,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = '1.7.11'
+APP_VERSION = '1.7.12'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -151,14 +151,36 @@ def _check_csrf():
 # ---------------------------------------------------------------------------
 # Hooks
 # ---------------------------------------------------------------------------
+_IDLE_TIMEOUT_SECS = 1800   # 30 min sin actividad real del usuario -> fuera
+# Endpoints sondeados por JS en segundo plano (p.ej. refrescar la lista de
+# conectados cada 4s): no cuentan como actividad real, o la sesión nunca
+# caducaría por inactividad mientras la pestaña del panel quede abierta.
+_IDLE_EXEMPT_ENDPOINTS = {'api_connected'}
+
+
 @app.before_request
 def before():
     request.environ['wsgi.url_scheme'] = 'https'
     session.permanent = True
-    # Reject revoked sessions (server-side logout invalidation)
-    if 'user' in session and _session_id() in _revoked_sessions:
-        session.clear()
-        return redirect(url_for('login'), 303)
+    if 'user' in session:
+        # Reject revoked sessions (server-side logout invalidation)
+        if _session_id() in _revoked_sessions:
+            session.clear()
+            return redirect(url_for('login'), 303)
+        now = time.time()
+        session.setdefault('_login_at', now)
+        session.setdefault('_last_seen', now)
+        max_secs = app.config['PERMANENT_SESSION_LIFETIME'].total_seconds()
+        if now - session['_login_at'] > max_secs:
+            logger.info('Sesion caducada (duracion maxima) user=%s ip=%s', session.get('user'), _client_ip())
+            session.clear()
+            return redirect(url_for('login'), 303)
+        if now - session['_last_seen'] > _IDLE_TIMEOUT_SECS:
+            logger.info('Sesion caducada (inactividad) user=%s ip=%s', session.get('user'), _client_ip())
+            session.clear()
+            return redirect(url_for('login'), 303)
+        if request.endpoint not in _IDLE_EXEMPT_ENDPOINTS:
+            session['_last_seen'] = now
     _check_csrf()   # applies to all POST requests, including login
     lang = request.cookies.get('lang')
     g.lang = lang if lang in SUPPORTED_LANGS else DEFAULT_LANG
@@ -943,6 +965,8 @@ def login():
             session.clear()
             session['user'] = user
             session['_sid'] = secrets.token_hex(16)   # server-side revocation token
+            session['_login_at'] = time.time()
+            session['_last_seen'] = time.time()
             logger.info('Login OK user=%s ip=%s', user, ip)
             return redirect(url_for('index'), 303)
         else:
